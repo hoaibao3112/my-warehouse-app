@@ -1,0 +1,1873 @@
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../lib/generated/prisma"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model menu_types {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String              @db.VarChar(255)
+  created_at        DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at        DateTime?           @default(now()) @db.Timestamp(6)
+  warehouse_id      String?             @db.Uuid
+  categories        categories[]
+  warehouses        warehouses?         @relation("warehouse_menu_types", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  supplier_products supplier_products[]
+
+  @@unique([warehouse_id, name], map: "idx_menu_types_warehouse_name")
+}
+
+model categories {
+  id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                           String                           @db.VarChar(255)
+  created_at                     DateTime?                        @default(now()) @db.Timestamp(6)
+  updated_at                     DateTime?                        @default(now()) @db.Timestamp(6)
+  menu_type_id                   String?                          @db.Uuid
+  warehouse_id                   String?                          @db.Uuid
+  warehouses                     warehouses?                      @relation("warehouse_categories", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  menu_types                     menu_types?                      @relation(fields: [menu_type_id], references: [id], onUpdate: NoAction, map: "fk_categories_menu_type")
+  product_recipes                product_recipes[]
+  products                       products[]
+  supplier_products              supplier_products[]
+  warehouse_category_permissions warehouse_category_permissions[]
+  printer_mappings               printer_category_mappings[]
+
+  @@index([name], map: "idx_categories_name")
+  @@index([menu_type_id], map: "idx_categories_menu_type")
+  @@index([warehouse_id], map: "idx_categories_warehouse")
+}
+
+model inventory_check_items {
+  id                               String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_id                         String                             @db.Uuid
+  product_id                       String                             @db.Uuid
+  opening_balance                  Decimal?                           @default(0) @db.Decimal(18, 6)
+  imports                          Decimal?                           @default(0) @db.Decimal(18, 6)
+  exports                          Decimal?                           @default(0) @db.Decimal(18, 6)
+  system_balance                   Decimal?                           @default(0) @db.Decimal(18, 6)
+  actual_balance                   Decimal?                           @default(0) @db.Decimal(18, 6) // Changed from Int to Decimal to support fractional counts (e.g. 1.5kg)
+  difference                       Decimal?                           @default(0) @db.Decimal(18, 6)
+  difference_percentage            Decimal?                           @default(0) @db.Decimal(10, 2)
+  created_at                       DateTime?                          @default(now()) @db.Timestamp(6)
+  input_unit_id                    String?                            @db.Uuid
+  input_value                      Decimal?                           @db.Decimal(18, 6)
+  inventory_check_adjustment_items inventory_check_adjustment_items[] @relation("inventory_check_adjustment_items_check_item")
+  inventory_checks                 inventory_checks                   @relation(fields: [check_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_inventory_check_items_check")
+  input_unit                       product_units?                     @relation(fields: [input_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_inventory_check_items_input_unit")
+  products                         products                           @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_inventory_check_items_product")
+
+  @@index([check_id], map: "idx_inventory_check_items_check")
+  @@index([input_unit_id], map: "idx_inventory_check_items_input_unit")
+}
+
+model inventory_checks {
+  id                          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  number                      String                       @unique @db.VarChar(100)
+  warehouse_id                String                       @db.Uuid
+  period                      String                       @db.VarChar(50)
+  created_by                  String?                      @db.VarChar(100)
+  created_at                  DateTime?                    @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime?                    @default(now()) @db.Timestamptz(6)
+  status                      inventory_check_status       @default(IN_PROGRESS)
+  inventory_check_completions inventory_check_completions? @relation("inventory_check_completions_check")
+  inventory_check_items       inventory_check_items[]
+  warehouses                  warehouses                   @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_inventory_checks_warehouse")
+
+  @@index([created_at], map: "idx_inventory_checks_created_at")
+  @@index([warehouse_id], map: "idx_inventory_checks_warehouse")
+}
+
+model inventory_intakes {
+  id                    String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  intake_number         String                  @unique @db.VarChar(100)
+  warehouse_id          String                  @db.Uuid
+  created_by            String                  @db.Uuid
+  created_at            DateTime?               @default(now()) @db.Timestamp(6)
+  approved_at_bm        DateTime?               @db.Timestamp(6)
+  approved_at_warehouse DateTime?               @db.Timestamp(6)
+  approved_by_bm        String?                 @db.Uuid
+  approved_by_warehouse String?                 @db.Uuid
+  bm_notes              String?
+  notes                 String?
+  rejected_at           DateTime?               @db.Timestamp(6)
+  rejected_by           String?                 @db.Uuid
+  rejection_reason      String?
+  status                inventory_intake_status @default(PENDING_WAREHOUSE_APPROVAL)
+  updated_at            DateTime?               @default(now()) @db.Timestamp(6)
+  warehouse_notes       String?
+  bm_approver           users?                  @relation("intake_bm_approver", fields: [approved_by_bm], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse_approver    users?                  @relation("intake_warehouse_approver", fields: [approved_by_warehouse], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users                 users                   @relation("intake_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rejector              users?                  @relation("intake_rejector", fields: [rejected_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses            warehouses              @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at], map: "idx_inventory_intakes_created_at")
+  @@index([status], map: "idx_inventory_intakes_status")
+  @@index([warehouse_id, status], map: "idx_inventory_intakes_warehouse_status")
+}
+
+model inventory_loss_reports {
+  id                                              String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_number                                   String                        @unique @db.VarChar(100)
+  warehouse_id                                    String                        @db.Uuid
+  product_id                                      String?                       @db.Uuid
+  quantity_lost                                   Decimal?                      @db.Decimal(18, 6)
+  reason                                          String?                       @db.VarChar(255)
+  reported_by                                     String                        @db.Uuid
+  approved_by                                     String?                       @db.Uuid
+  created_at                                      DateTime?                     @default(now()) @db.Timestamp(6)
+  updated_at                                      DateTime?                     @default(now()) @db.Timestamp(6)
+  inventory_loss_report_items                     inventory_loss_report_items[]
+  users_inventory_loss_reports_approved_byTousers users?                        @relation("inventory_loss_reports_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products                                        products?                     @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_inventory_loss_reports_reported_byTousers users                         @relation("inventory_loss_reports_reported_byTousers", fields: [reported_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses                                      warehouses                    @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id], map: "idx_inventory_loss_warehouse")
+}
+
+model inventory_loss_report_items {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_id              String                 @db.Uuid
+  product_id             String                 @db.Uuid
+  unit_id                String                 @db.Uuid
+  quantity_lost          Decimal                @db.Decimal(18, 6)
+  unit_price             Decimal?               @db.Decimal(12, 2)
+  created_at             DateTime?              @default(now()) @db.Timestamp(6)
+  updated_at             DateTime?              @default(now()) @db.Timestamp(6)
+  products               products               @relation("inventory_loss_report_items_products", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  inventory_loss_reports inventory_loss_reports @relation(fields: [report_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_units          product_units          @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([report_id], map: "idx_inventory_loss_report_items_report")
+  @@index([product_id], map: "idx_inventory_loss_report_items_product")
+}
+
+model product_units {
+  id                                                        String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                                                      String                            @db.VarChar(50)
+  name                                                      String                            @db.VarChar(255)
+  description                                               String?
+  created_at                                                DateTime?                         @default(now()) @db.Timestamp(6)
+  updated_at                                                DateTime?                         @default(now()) @db.Timestamp(6)
+  warehouse_id                                              String?                           @db.Uuid
+  external_sales_export_items                               external_sales_export_items[]     @relation("external_export_items_unit")
+  internal_transfer_items_exported_unit                     internal_transfer_request_items[] @relation("internal_transfer_items_exported_unit")
+  internal_transfer_items_manager_unit                      internal_transfer_request_items[] @relation("internal_transfer_items_manager_unit")
+  internal_transfer_items_received_unit                     internal_transfer_request_items[] @relation("internal_transfer_items_received_unit")
+  internal_transfer_items_requested_unit                    internal_transfer_request_items[] @relation("internal_transfer_items_requested_unit")
+  inventory_check_items                                     inventory_check_items[]
+  inventory_import_items                                    inventory_import_items[]          @relation("inventory_import_items_unit")
+  inventory_loss_report_items                               inventory_loss_report_items[]
+  product_package_units                                     product_package_units[]
+  product_recipes                                           product_recipes[]
+  warehouses                                                warehouses?                       @relation("warehouse_units", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  products                                                  products[]
+  purchase_order_items                                      purchase_order_items[]            @relation("purchase_order_items_unit")
+  purchase_orders_detail_items                              purchase_orders_detail_items[]
+  recipe_ingredients                                        recipe_ingredients[]
+  supplier_products                                         supplier_products[]               @relation("supplier_products_unit")
+  unit_relations_unit_relations_from_unit_idToproduct_units unit_relations[]                  @relation("unit_relations_from_unit_idToproduct_units")
+  unit_relations_unit_relations_to_unit_idToproduct_units   unit_relations[]                  @relation("unit_relations_to_unit_idToproduct_units")
+  warehouse_stock_realtime                                  warehouse_stock_realtime[]        @relation("warehouse_stock_realtime_unit")
+  warehouse_transfer_items_approved_unit                    warehouse_transfer_items[]        @relation("warehouse_transfer_items_approved_unit")
+  warehouse_transfer_items_manager_approved_unit            warehouse_transfer_items[]        @relation("warehouse_transfer_items_manager_approved_unit")
+  warehouse_transfer_items_original_unit                    warehouse_transfer_items[]        @relation("warehouse_transfer_items_unit")
+
+  @@unique([warehouse_id, code], map: "idx_product_units_warehouse_code")
+  @@index([warehouse_id], map: "idx_product_units_warehouse")
+}
+
+model products {
+  id                               String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                             String                             @db.VarChar(100)
+  name                             String                             @db.VarChar(255)
+  unit_id                          String                             @db.Uuid
+  created_at                       DateTime?                          @default(now()) @db.Timestamp(6)
+  updated_at                       DateTime?                          @default(now()) @db.Timestamp(6)
+  category_id                      String?                            @db.Uuid
+  price                            Decimal?                           @db.Decimal(12, 2)
+  warehouse_id                     String?                            @db.Uuid
+  external_sales_export_items      external_sales_export_items[]      @relation("external_export_items_product")
+  internal_transfer_items          internal_transfer_request_items[]  @relation("internal_transfer_items_product")
+  inventory_adjustment_items       inventory_adjustment_items[]       @relation("inventory_adjustment_items_product")
+  inventory_check_adjustment_items inventory_check_adjustment_items[] @relation("inventory_check_adjustment_items_product")
+  inventory_check_items            inventory_check_items[]
+  inventory_import_items           inventory_import_items[]           @relation("inventory_import_items_product")
+  inventory_loss_report_items      inventory_loss_report_items[]      @relation("inventory_loss_report_items_products")
+  inventory_loss_reports           inventory_loss_reports[]
+  inventory_snapshots              inventory_snapshots[]              @relation("inventory_snapshots_product")
+  product_package_units            product_package_units[]
+  product_recipes                  product_recipes[]
+  production_ingredient_usages     production_ingredient_usages[]     @relation("production_ingredient_usages_ingredient")
+  categories                       categories?                        @relation(fields: [category_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product_units                    product_units                      @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_product_owner         warehouses?                        @relation("warehouse_products", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  promotion_gifts                  promotion_gifts[]
+  promotion_products               promotion_products[]
+  purchase_order_items             purchase_order_items[]
+  recipe_deduction_items           recipe_deduction_items[]           @relation("recipe_deduction_items_ingredient")
+  recipe_ingredients               recipe_ingredients[]               @relation("recipe_ingredients_ingredient")
+  warehouse_stock                  warehouse_stock[]
+  warehouse_stock_realtime         warehouse_stock_realtime[]         @relation("warehouse_stock_realtime_product")
+  warehouse_transfer_items         warehouse_transfer_items[]
+
+  @@unique([warehouse_id, code], map: "idx_products_warehouse_code")
+  @@index([warehouse_id], map: "idx_products_warehouse_id")
+  @@index([category_id], map: "idx_products_category")
+  @@index([code], map: "idx_products_code")
+}
+
+model purchase_order_items {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchase_order_id String          @db.Uuid
+  product_id        String          @db.Uuid
+  quantity          Int
+  unit_price        Decimal?        @db.Decimal(12, 2)
+  line_total        Decimal?        @db.Decimal(15, 2)
+  created_at        DateTime?       @default(now()) @db.Timestamp(6)
+  unit_id           String?         @db.Uuid
+  products          products        @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purchase_orders   purchase_orders @relation(fields: [purchase_order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_units     product_units?  @relation("purchase_order_items_unit", fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([unit_id], map: "idx_purchase_order_items_unit")
+}
+
+model purchase_orders {
+  id                                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  po_number                                String                 @unique @db.VarChar(100)
+  warehouse_id                             String                 @db.Uuid
+  supplier_name                            String?                @db.VarChar(255)
+  status                                   purchase_order_status? @default(DRAFT)
+  total_amount                             Decimal?               @db.Decimal(15, 2)
+  created_by                               String                 @db.Uuid
+  approved_by                              String?                @db.Uuid
+  received_at                              DateTime?              @db.Timestamp(6)
+  created_at                               DateTime?              @default(now()) @db.Timestamp(6)
+  updated_at                               DateTime?              @default(now()) @db.Timestamp(6)
+  purchase_order_items                     purchase_order_items[]
+  users_purchase_orders_approved_byTousers users?                 @relation("purchase_orders_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_purchase_orders_created_byTousers  users                  @relation("purchase_orders_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses                               warehouses             @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status], map: "idx_purchase_orders_status")
+  @@index([warehouse_id], map: "idx_purchase_orders_warehouse")
+}
+
+model inventory_imports {
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  import_number String                   @unique @db.VarChar(100)
+  warehouse_id  String                   @db.Uuid
+  supplier_name String?                  @db.VarChar(255)
+  import_date   DateTime                 @db.Timestamp(6)
+  total_amount  Decimal?                 @db.Decimal(15, 2)
+  notes         String?
+  created_by    String                   @db.Uuid
+  created_at    DateTime                 @default(now()) @db.Timestamp(6)
+  items         inventory_import_items[]
+  user          users                    @relation("inventory_imports_user", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse     warehouses               @relation("inventory_imports_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id, import_date], map: "idx_inventory_imports_warehouse_date")
+  @@index([import_date], map: "idx_inventory_imports_date")
+  @@index([created_by], map: "idx_inventory_imports_user")
+}
+
+model inventory_import_items {
+  id                      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  import_id               String            @db.Uuid
+  product_id              String            @db.Uuid
+  quantity                Decimal           @db.Decimal(18, 6)
+  input_unit_id           String            @db.Uuid
+  base_quantity           Decimal           @db.Decimal(18, 6)
+  unit_price              Decimal?          @db.Decimal(12, 2)
+  line_total              Decimal?          @db.Decimal(15, 2)
+  batch_number            String?           @db.VarChar(100)
+  expiry_date             DateTime?         @db.Date
+  created_at              DateTime          @default(now()) @db.Timestamp(6)
+  stock_after_transaction Int?
+  import                  inventory_imports @relation(fields: [import_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  input_unit              product_units     @relation("inventory_import_items_unit", fields: [input_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product                 products          @relation("inventory_import_items_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([import_id], map: "idx_inventory_import_items_import")
+  @@index([product_id], map: "idx_inventory_import_items_product")
+}
+
+model recipe_deductions {
+  id              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_id      String                   @db.Uuid
+  invoice_item_id String                   @db.Uuid
+  recipe_id       String                   @db.Uuid
+  warehouse_id    String                   @db.Uuid
+  quantity_sold   Int
+  deduction_date  DateTime                 @db.Timestamp(6)
+  created_at      DateTime                 @default(now()) @db.Timestamp(6)
+  ingredients     recipe_deduction_items[]
+  invoice         sales_invoices           @relation("recipe_deductions_invoice", fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  invoice_item    sales_invoice_items      @relation("recipe_deductions_invoice_item", fields: [invoice_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  recipe          product_recipes          @relation("recipe_deductions_recipe", fields: [recipe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse       warehouses               @relation("recipe_deductions_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([invoice_id], map: "idx_recipe_deductions_invoice")
+  @@index([warehouse_id, deduction_date], map: "idx_recipe_deductions_warehouse_date")
+  @@index([recipe_id], map: "idx_recipe_deductions_recipe")
+}
+
+model recipe_deduction_items {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deduction_id      String            @db.Uuid
+  ingredient_id     String            @db.Uuid
+  quantity_deducted Int
+  created_at        DateTime          @default(now()) @db.Timestamp(6)
+  deduction         recipe_deductions @relation(fields: [deduction_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ingredient        products          @relation("recipe_deduction_items_ingredient", fields: [ingredient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([deduction_id], map: "idx_recipe_deduction_items_deduction")
+  @@index([ingredient_id], map: "idx_recipe_deduction_items_ingredient")
+}
+
+model production_transactions {
+  id                String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  production_number String                         @unique @db.VarChar(100)
+  warehouse_id      String                         @db.Uuid
+  recipe_id         String                         @db.Uuid
+  quantity_produced Int
+  production_date   DateTime                       @db.Timestamp(6)
+  notes             String?
+  created_by        String                         @db.Uuid
+  created_at        DateTime                       @default(now()) @db.Timestamp(6)
+  ingredients       production_ingredient_usages[]
+  user              users                          @relation("production_transactions_user", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  recipe            product_recipes                @relation("production_transactions_recipe", fields: [recipe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse         warehouses                     @relation("production_transactions_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id, production_date], map: "idx_production_transactions_warehouse_date")
+  @@index([recipe_id], map: "idx_production_transactions_recipe")
+  @@index([created_by], map: "idx_production_transactions_user")
+}
+
+model production_ingredient_usages {
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  production_id String                  @db.Uuid
+  ingredient_id String                  @db.Uuid
+  quantity_used Int
+  created_at    DateTime                @default(now()) @db.Timestamp(6)
+  ingredient    products                @relation("production_ingredient_usages_ingredient", fields: [ingredient_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  production    production_transactions @relation(fields: [production_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([production_id], map: "idx_production_ingredient_usages_production")
+  @@index([ingredient_id], map: "idx_production_ingredient_usages_ingredient")
+}
+
+model inventory_adjustments {
+  id                String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adjustment_number String                       @unique @db.VarChar(100)
+  warehouse_id      String                       @db.Uuid
+  adjustment_type   String                       @db.VarChar(50)
+  reason            String
+  adjustment_date   DateTime                     @db.Timestamp(6)
+  approved_by       String?                      @db.Uuid
+  created_by        String                       @db.Uuid
+  created_at        DateTime                     @default(now()) @db.Timestamp(6)
+  items             inventory_adjustment_items[]
+  approver          users?                       @relation("inventory_adjustments_approved", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  creator           users                        @relation("inventory_adjustments_created", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse         warehouses                   @relation("inventory_adjustments_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id, adjustment_date], map: "idx_inventory_adjustments_warehouse_date")
+  @@index([created_by], map: "idx_inventory_adjustments_created_by")
+}
+
+model inventory_adjustment_items {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adjustment_id   String                @db.Uuid
+  product_id      String                @db.Uuid
+  quantity_before Decimal               @db.Decimal(18, 6)
+  quantity_after  Decimal               @db.Decimal(18, 6)
+  quantity_change Decimal               @db.Decimal(18, 6)
+  notes           String?
+  created_at      DateTime              @default(now()) @db.Timestamp(6)
+  adjustment      inventory_adjustments @relation(fields: [adjustment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product         products              @relation("inventory_adjustment_items_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([adjustment_id], map: "idx_inventory_adjustment_items_adjustment")
+  @@index([product_id], map: "idx_inventory_adjustment_items_product")
+}
+
+model inventory_check_completions {
+  id                String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  check_id          String                             @unique(map: "idx_inventory_check_completions_check_unique") @db.Uuid
+  warehouse_id      String                             @db.Uuid
+  completed_at      DateTime                           @db.Timestamp(6)
+  completed_by      String                             @db.Uuid
+  total_adjustments Int                                @default(0)
+  created_at        DateTime                           @default(now()) @db.Timestamp(6)
+  adjustments       inventory_check_adjustment_items[]
+  check             inventory_checks                   @relation("inventory_check_completions_check", fields: [check_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user              users                              @relation("inventory_check_completions_user", fields: [completed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse         warehouses                         @relation("inventory_check_completions_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id, completed_at], map: "idx_inventory_check_completions_warehouse_date")
+}
+
+model inventory_check_adjustment_items {
+  id                String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  completion_id     String                      @db.Uuid
+  check_item_id     String                      @db.Uuid
+  product_id        String                      @db.Uuid
+  system_quantity   Decimal                     @db.Decimal(18, 6)
+  actual_quantity   Decimal                     @db.Decimal(18, 6)
+  difference        Decimal                     @db.Decimal(18, 6)
+  adjustment_reason String?
+  created_at        DateTime                    @default(now()) @db.Timestamp(6)
+  check_item        inventory_check_items       @relation("inventory_check_adjustment_items_check_item", fields: [check_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  completion        inventory_check_completions @relation(fields: [completion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product           products                    @relation("inventory_check_adjustment_items_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([completion_id], map: "idx_inventory_check_adjustment_items_completion")
+  @@index([product_id], map: "idx_inventory_check_adjustment_items_product")
+}
+
+model warehouse_stock_realtime {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id        String        @db.Uuid
+  product_id          String        @db.Uuid
+  quantity            Decimal       @default(0) @db.Decimal(18, 6)
+  unit_id             String        @db.Uuid
+  qty_imported        Decimal       @default(0) @db.Decimal(18, 6)
+  qty_produced        Decimal       @default(0) @db.Decimal(18, 6)
+  qty_sold            Decimal       @default(0) @db.Decimal(18, 6)
+  qty_transferred_in  Decimal       @default(0) @db.Decimal(18, 6)
+  qty_transferred_out Decimal       @default(0) @db.Decimal(18, 6)
+  qty_adjusted        Decimal       @default(0) @db.Decimal(18, 6)
+  last_updated        DateTime      @updatedAt @db.Timestamp(6)
+  version             Int           @default(1)
+  product             products      @relation("warehouse_stock_realtime_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  base_unit           product_units @relation("warehouse_stock_realtime_unit", fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse           warehouses    @relation("warehouse_stock_realtime_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([warehouse_id, product_id], map: "idx_warehouse_stock_realtime_unique")
+  @@index([warehouse_id], map: "idx_warehouse_stock_realtime_warehouse")
+  @@index([product_id], map: "idx_warehouse_stock_realtime_product")
+  @@index([quantity], map: "idx_warehouse_stock_realtime_quantity")
+}
+
+model inventory_snapshots {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id  String     @db.Uuid
+  product_id    String     @db.Uuid
+  snapshot_date DateTime   @db.Date
+  snapshot_type String     @db.VarChar(20)
+  opening_stock Decimal @db.Decimal(18, 6)
+  closing_stock Decimal @db.Decimal(18, 6)
+  total_in      Decimal @db.Decimal(18, 6)
+  total_out     Decimal @db.Decimal(18, 6)
+  created_at    DateTime   @default(now()) @db.Timestamp(6)
+  product       products   @relation("inventory_snapshots_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse     warehouses @relation("inventory_snapshots_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([warehouse_id, product_id, snapshot_date, snapshot_type], map: "idx_inventory_snapshots_unique")
+  @@index([warehouse_id, snapshot_date], map: "idx_inventory_snapshots_warehouse_date")
+  @@index([product_id, snapshot_date], map: "idx_inventory_snapshots_product_date")
+}
+
+model unit_relations {
+  id                                                       String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  from_unit_id                                             String        @db.Uuid
+  to_unit_id                                               String        @db.Uuid
+  multiplier                                               Decimal       @db.Decimal
+  created_at                                               DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at                                               DateTime?     @default(now()) @db.Timestamptz(6)
+  from_quantity                                            Decimal       @default(1) @db.Decimal
+  to_quantity                                              Decimal       @default(1) @db.Decimal
+  product_units_unit_relations_from_unit_idToproduct_units product_units @relation("unit_relations_from_unit_idToproduct_units", fields: [from_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_units_unit_relations_to_unit_idToproduct_units   product_units @relation("unit_relations_to_unit_idToproduct_units", fields: [to_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([from_unit_id, to_unit_id])
+  @@index([from_unit_id, to_unit_id], map: "idx_unit_relations_from_to")
+}
+
+model users {
+  id                                                               String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                            String?                       @unique @db.VarChar(255)
+  password_hash                                                    String                        @db.VarChar(255)
+  full_name                                                        String                        @db.VarChar(255)
+  role                                                             user_role
+  warehouse_id                                                     String?                       @db.Uuid
+  is_active                                                        Boolean?                      @default(true)
+  created_at                                                       DateTime?                     @default(now()) @db.Timestamp(6)
+  updated_at                                                       DateTime?                     @default(now()) @db.Timestamp(6)
+  permissions                                                      String?                       @default("[]")
+  employment_type                                                  employment_type?              @default(FULLTIME)
+  contract_expiry_date                                             DateTime?                     @db.Date
+  contract_signed_date                                             DateTime?                     @db.Date
+  employment_start_date                                            DateTime?                     @db.Date
+  work_status                                                      work_status?                  @default(ACTIVE)
+  bank_account                                                     String?                       @db.VarChar(50)
+  bank_name                                                        String?                       @db.VarChar(255)
+  national_id                                                      String?                       @db.VarChar(12)
+  permanent_address                                                String?
+  phone_number                                                     String?                       @db.VarChar(20)
+  employee_code                                                    String?                       @unique @db.VarChar(50)
+  education_level                                                  String?                       @db.VarChar(50)
+  emergency_contact_name                                           String?                       @db.VarChar(255)
+  emergency_contact_phone                                          String?                       @db.VarChar(20)
+  termination_date                                                 DateTime?                     @db.Date
+  attendance_sessions_modified                                     attendance_sessions[]         @relation("attendance_sessions_modified_byTousers")
+  attendance_sessions_user                                         attendance_sessions[]         @relation("attendance_sessions_user_idTousers")
+  device_tokens                                                    device_tokens[]
+  external_sales_exports_approved                                  external_sales_exports[]      @relation("external_sales_exports_approved_by")
+  external_sales_exports_created                                   external_sales_exports[]      @relation("external_sales_exports_created_by")
+  internal_transfers_created                                       internal_transfer_requests[]  @relation("internal_transfers_created_by")
+  internal_transfers_discrepancy_confirmed                         internal_transfer_requests[]  @relation("internal_transfers_discrepancy_confirmed")
+  internal_transfers_exported                                      internal_transfer_requests[]  @relation("internal_transfers_exported_by")
+  internal_transfers_gm_approved                                   internal_transfer_requests[]  @relation("internal_transfers_gm_approved")
+  internal_transfers_manager_approved                              internal_transfer_requests[]  @relation("internal_transfers_manager_approved")
+  internal_transfers_received                                      internal_transfer_requests[]  @relation("internal_transfers_received_by")
+  internal_transfers_rejected                                      internal_transfer_requests[]  @relation("internal_transfers_rejected_by")
+  inventory_adjustments_approved                                   inventory_adjustments[]       @relation("inventory_adjustments_approved")
+  inventory_adjustments_created                                    inventory_adjustments[]       @relation("inventory_adjustments_created")
+  inventory_check_completions                                      inventory_check_completions[] @relation("inventory_check_completions_user")
+  inventory_imports                                                inventory_imports[]           @relation("inventory_imports_user")
+  inventory_intakes_bm_approver                                    inventory_intakes[]           @relation("intake_bm_approver")
+  inventory_intakes_warehouse_approver                             inventory_intakes[]           @relation("intake_warehouse_approver")
+  inventory_intakes_created                                        inventory_intakes[]           @relation("intake_created_by")
+  inventory_intakes_rejector                                       inventory_intakes[]           @relation("intake_rejector")
+  inventory_loss_reports_inventory_loss_reports_approved_byTousers inventory_loss_reports[]      @relation("inventory_loss_reports_approved_byTousers")
+  inventory_loss_reports_inventory_loss_reports_reported_byTousers inventory_loss_reports[]      @relation("inventory_loss_reports_reported_byTousers")
+  leave_requests_approver                                          leave_requests[]              @relation("leave_requests_approver")
+  leave_requests_user                                              leave_requests[]              @relation("leave_requests_user")
+  notifications                                                    notifications[]
+  product_recipes                                                  product_recipes[]
+  production_records                                               production_records[]
+  production_transactions                                          production_transactions[]     @relation("production_transactions_user")
+  purchase_orders_purchase_orders_approved_byTousers               purchase_orders[]             @relation("purchase_orders_approved_byTousers")
+  purchase_orders_purchase_orders_created_byTousers                purchase_orders[]             @relation("purchase_orders_created_byTousers")
+  reports                                                          reports[]
+  salary_advance_requests_approver                                 salary_advance_requests[]     @relation("salary_advance_requests_approver")
+  salary_advance_requests_user                                     salary_advance_requests[]     @relation("salary_advance_requests_user")
+  salary_advance_requests_admin_approver                           salary_advance_requests[]     @relation("salary_advance_requests_admin_approver")
+  salary_advance_requests_hr_approver                              salary_advance_requests[]     @relation("salary_advance_requests_hr_approver")
+  sales_invoices                                                   sales_invoices[]
+  sales_sessions_user                                              sales_sessions[]              @relation("sales_sessions_user_idTousers")
+  sales_sessions_approved                                          sales_sessions[]              @relation("sales_sessions_approved_byTousers")
+  sales_sessions_closing_cash                                      sales_sessions[]              @relation("sales_sessions_closing_cash_user")
+  sales_sessions_opening_cash                                      sales_sessions[]              @relation("sales_sessions_opening_cash_user")
+  shift_assignments_shift_assignments_assignerTousers              shift_assignments[]           @relation("shift_assignments_assigner")
+  shift_assignments_shift_assignments_userTousers                  shift_assignments[]           @relation("shift_assignments_user")
+  shift_registration_requests_approver                             shift_registration_requests[] @relation("shift_registration_requests_approver")
+  shift_registration_requests_user                                 shift_registration_requests[] @relation("shift_registration_requests_user")
+  shift_session_logs                                               shift_session_logs[]
+  shift_sessions_shift_sessions_user_idTousers                     shift_sessions[]              @relation("shift_sessions_user_idTousers")
+  shift_sessions_shift_sessions_modified_byTousers                 shift_sessions[]              @relation("shift_sessions_modified_byTousers")
+  shift_swap_requests_approver                                     shift_swap_requests[]         @relation("shift_swap_requests_approver")
+  shift_swap_requests_requester                                    shift_swap_requests[]         @relation("shift_swap_requests_requester")
+  shift_swap_requests_target                                       shift_swap_requests[]         @relation("shift_swap_requests_target")
+  assigned_warehouses                                              user_warehouse_assignments[]  @relation("user_warehouse_assignments_assigner")
+  warehouse_assignments                                            user_warehouse_assignments[]  @relation("user_warehouse_assignments_user")
+  warehouses_users_warehouse_idTowarehouses                        warehouses?                   @relation("users_warehouse_idTowarehouses", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_warehouse")
+  warehouse_transfers_warehouse_transfers_approved_byTousers       warehouse_transfers[]         @relation("warehouse_transfers_approved_byTousers")
+  warehouse_transfers_warehouse_transfers_requested_byTousers      warehouse_transfers[]         @relation("warehouse_transfers_requested_byTousers")
+  warehouses_warehouses_manager_idTousers                          warehouses[]                  @relation("warehouses_manager_idTousers")
+
+  @@index([email], map: "idx_users_email")
+  @@index([warehouse_id], map: "idx_users_warehouse_id")
+}
+
+model warehouse_stock {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id    String     @db.Uuid
+  product_id      String     @db.Uuid
+  quantity        Int        @default(0)
+  last_counted_at DateTime?  @db.Timestamp(6)
+  created_at      DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?  @default(now()) @db.Timestamp(6)
+  products        products   @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses      warehouses @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([warehouse_id, product_id])
+  @@index([product_id], map: "idx_warehouse_stock_product")
+  @@index([warehouse_id], map: "idx_warehouse_stock_warehouse")
+}
+
+model warehouse_transfer_items {
+  id                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transfer_id              String              @db.Uuid
+  product_id               String              @db.Uuid
+  quantity                 Decimal             @db.Decimal(18, 6)
+  received_quantity        Decimal?            @default(0) @db.Decimal(18, 6)
+  created_at               DateTime?           @default(now()) @db.Timestamp(6)
+  unit_id                  String              @db.Uuid
+  actual_received_quantity Decimal?            @default(0) @db.Decimal(18, 6)
+  approved_unit_id         String?             @db.Uuid
+  admin_approved_quantity  Decimal?            @db.Decimal(18, 6)
+  manager_approved_unit_id String?             @db.Uuid
+  approved_unit            product_units?      @relation("warehouse_transfer_items_approved_unit", fields: [approved_unit_id], references: [id], onUpdate: NoAction, map: "fk_warehouse_transfer_items_approved_unit")
+  manager_approved_unit    product_units?      @relation("warehouse_transfer_items_manager_approved_unit", fields: [manager_approved_unit_id], references: [id], onUpdate: NoAction, map: "fk_warehouse_transfer_items_manager_approved_unit")
+  product_units            product_units       @relation("warehouse_transfer_items_unit", fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_warehouse_transfer_items_unit")
+  products                 products            @relation(fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouse_transfers      warehouse_transfers @relation(fields: [transfer_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([unit_id], map: "idx_warehouse_transfer_items_unit")
+  @@index([approved_unit_id], map: "idx_warehouse_transfer_items_approved_unit")
+  @@index([manager_approved_unit_id], map: "idx_warehouse_transfer_items_manager_approved_unit")
+}
+
+model warehouse_transfers {
+  id                                                           String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transfer_number                                              String                     @unique @db.VarChar(100)
+  from_warehouse_id                                            String                     @db.Uuid
+  to_warehouse_id                                              String                     @db.Uuid
+  requested_by                                                 String                     @db.Uuid
+  approved_by                                                  String?                    @db.Uuid
+  completed_at                                                 DateTime?                  @db.Timestamp(6)
+  rejection_reason                                             String?
+  created_at                                                   DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_at                                                   DateTime?                  @default(now()) @db.Timestamp(6)
+  exported_at                                                  DateTime?                  @db.Timestamp(6)
+  status                                                       transfer_status?           @default(CHO_DUYET)
+  warehouse_transfer_items                                     warehouse_transfer_items[]
+  users_warehouse_transfers_approved_byTousers                 users?                     @relation("warehouse_transfers_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_warehouse_transfers_from_warehouse_idTowarehouses warehouses                 @relation("warehouse_transfers_from_warehouse_idTowarehouses", fields: [from_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_warehouse_transfers_requested_byTousers                users                      @relation("warehouse_transfers_requested_byTousers", fields: [requested_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_warehouse_transfers_to_warehouse_idTowarehouses   warehouses                 @relation("warehouse_transfers_to_warehouse_idTowarehouses", fields: [to_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([from_warehouse_id], map: "idx_warehouse_transfers_from")
+  @@index([to_warehouse_id], map: "idx_warehouse_transfers_to")
+}
+
+model warehouses {
+  id                                                                    String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                                                                  String                           @unique @db.VarChar(50)
+  name                                                                  String                           @db.VarChar(255)
+  type                                                                  warehouse_type
+  location                                                              String?                          @db.VarChar(255)
+  manager_id                                                            String?                          @db.Uuid
+  is_active                                                             Boolean?                         @default(true)
+  created_at                                                            DateTime?                        @default(now()) @db.Timestamp(6)
+  updated_at                                                            DateTime?                        @default(now()) @db.Timestamp(6)
+  discount_percentage                                                   Decimal?                         @default(0) @db.Decimal(5, 2)
+  checkin_radius_meters                                                 Int?                             @default(3000)
+  latitude                                                              Decimal?                         @db.Decimal(10, 8)
+  longitude                                                             Decimal?                         @db.Decimal(11, 8)
+  default_printer_id                                                    String?                          @db.VarChar(255)
+  require_printer                                                       Boolean?                         @default(false)
+  attendance_sessions                                                   attendance_sessions[]
+  own_categories                                                        categories[]                     @relation("warehouse_categories")
+  own_external_customers                                                external_customers[]             @relation("warehouse_external_customers")
+  external_sales_exports                                                external_sales_exports[]
+  internal_transfers_from                                               internal_transfer_requests[]     @relation("internal_transfers_from_warehouse")
+  internal_transfers_to                                                 internal_transfer_requests[]     @relation("internal_transfers_to_warehouse")
+  inventory_adjustments                                                 inventory_adjustments[]          @relation("inventory_adjustments_warehouse")
+  inventory_check_completions                                           inventory_check_completions[]    @relation("inventory_check_completions_warehouse")
+  inventory_checks                                                      inventory_checks[]
+  inventory_imports                                                     inventory_imports[]              @relation("inventory_imports_warehouse")
+  inventory_intakes                                                     inventory_intakes[]
+  inventory_loss_reports                                                inventory_loss_reports[]
+  inventory_snapshots                                                   inventory_snapshots[]            @relation("inventory_snapshots_warehouse")
+  leave_requests                                                        leave_requests[]
+  own_menu_types                                                        menu_types[]                     @relation("warehouse_menu_types")
+  product_recipes                                                       product_recipes[]
+  own_units                                                             product_units[]                  @relation("warehouse_units")
+  production_records                                                    production_records[]
+  production_transactions                                               production_transactions[]        @relation("production_transactions_warehouse")
+  own_products                                                          products[]                       @relation("warehouse_products")
+  promotion_warehouses                                                  promotion_warehouses[]
+  purchase_orders                                                       purchase_orders[]
+  recipe_deductions                                                     recipe_deductions[]              @relation("recipe_deductions_warehouse")
+  reports                                                               reports[]
+  salary_advance_requests                                               salary_advance_requests[]
+  sales_invoices                                                        sales_invoices[]
+  sales_sessions                                                        sales_sessions[]
+  shift_assignments                                                     shift_assignments[]
+  shift_registration_requests                                           shift_registration_requests[]
+  shift_sessions                                                        shift_sessions[]
+  shift_swap_requests                                                   shift_swap_requests[]
+  own_suppliers                                                         suppliers[]                      @relation("warehouse_suppliers")
+  assigned_users                                                        user_warehouse_assignments[]     @relation("user_warehouse_assignments_warehouse")
+  users_users_warehouse_idTowarehouses                                  users[]                          @relation("users_warehouse_idTowarehouses")
+  own_voucher_programs                                                  voucher_programs[]               @relation("voucher_programs_warehouse")
+  warehouse_category_permissions                                        warehouse_category_permissions[]
+  warehouse_printer_configs                                             warehouse_printer_configs[]
+  sales_targets                                                         warehouse_sales_targets[]
+  warehouse_stock                                                       warehouse_stock[]
+  warehouse_stock_realtime                                              warehouse_stock_realtime[]       @relation("warehouse_stock_realtime_warehouse")
+  warehouse_transfers_warehouse_transfers_from_warehouse_idTowarehouses warehouse_transfers[]            @relation("warehouse_transfers_from_warehouse_idTowarehouses")
+  warehouse_transfers_warehouse_transfers_to_warehouse_idTowarehouses   warehouse_transfers[]            @relation("warehouse_transfers_to_warehouse_idTowarehouses")
+  users_warehouses_manager_idTousers                                    users?                           @relation("warehouses_manager_idTousers", fields: [manager_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  work_shifts                                                           work_shifts[]
+
+  @@index([type], map: "idx_warehouses_type")
+}
+
+model product_recipes {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id              String?                   @db.Uuid
+  warehouse_id            String?                   @db.Uuid
+  name                    String                    @db.VarChar(255)
+  description             String?
+  output_quantity         Int
+  output_unit_id          String                    @db.Uuid
+  is_active               Boolean                   @default(true)
+  created_by              String                    @db.Uuid
+  created_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  updated_at              DateTime?                 @default(now()) @db.Timestamp(6)
+  price                   Decimal?                  @db.Decimal(12, 2)
+  category_id             String?                   @db.Uuid
+  code                    String?                   @db.VarChar(50)
+  image_url               String?                   @db.VarChar(500)
+  categories              categories?               @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "fk_product_recipes_category")
+  users                   users                     @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_product_recipes_created_by")
+  product_units           product_units             @relation(fields: [output_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_product_recipes_output_unit")
+  products                products?                 @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_product_recipes_product")
+  warehouses              warehouses?               @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_product_recipes_warehouse")
+  production_records      production_records[]
+  production_transactions production_transactions[] @relation("production_transactions_recipe")
+  recipe_deductions       recipe_deductions[]       @relation("recipe_deductions_recipe")
+  recipe_ingredients      recipe_ingredients[]
+  sales_invoice_items     sales_invoice_items[]
+
+  @@unique([warehouse_id, code], map: "idx_product_recipes_warehouse_code")
+  @@index([warehouse_id], map: "idx_product_recipes_warehouse")
+  @@index([product_id], map: "idx_product_recipes_product")
+  @@index([category_id], map: "idx_product_recipes_category")
+}
+
+model recipe_ingredients {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipe_id         String          @db.Uuid
+  ingredient_id     String          @db.Uuid
+  unit_id           String          @db.Uuid
+  quantity_required Decimal         @db.Decimal(10, 2)
+  created_at        DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at        DateTime?       @default(now()) @db.Timestamp(6)
+  products          products        @relation("recipe_ingredients_ingredient", fields: [ingredient_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_ingredients_ingredient")
+  product_recipes   product_recipes @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recipe_ingredients_recipe")
+  product_units     product_units   @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_recipe_ingredients_unit")
+
+  @@unique([recipe_id, ingredient_id], map: "idx_recipe_ingredients_unique")
+  @@index([recipe_id], map: "idx_recipe_ingredients_recipe")
+  @@index([ingredient_id], map: "idx_recipe_ingredients_ingredient")
+}
+
+model production_records {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipe_id         String          @db.Uuid
+  warehouse_id      String          @db.Uuid
+  quantity_produced Int
+  produced_by       String          @db.Uuid
+  created_at        DateTime?       @default(now()) @db.Timestamp(6)
+  product_recipes   product_recipes @relation(fields: [recipe_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_production_records_recipe")
+  users             users           @relation(fields: [produced_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_production_records_user")
+  warehouses        warehouses      @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_production_records_warehouse")
+
+  @@index([warehouse_id], map: "idx_production_records_warehouse")
+  @@index([recipe_id], map: "idx_production_records_recipe")
+  @@index([created_at], map: "idx_production_records_created_at")
+}
+
+model sales_invoices {
+  id                String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_number    String                @unique @db.VarChar(100)
+  warehouse_id      String                @db.Uuid
+  total_amount      Decimal?              @db.Decimal(15, 2)
+  notes             String?
+  created_by        String                @db.Uuid
+  created_at        DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at        DateTime?             @default(now()) @db.Timestamp(6)
+  discount_amount   Decimal?              @db.Decimal(15, 2)
+  promotion_id      String?               @db.Uuid
+  voucher_id        String?               @db.Uuid
+  gift_promotion_id String?               @db.Uuid
+  sales_session_id  String?               @db.Uuid
+  has_vat           Boolean               @default(false)
+  vat_amount        Decimal?              @default(0) @db.Decimal(15, 2)
+  recipe_deductions recipe_deductions[]   @relation("recipe_deductions_invoice")
+  items             sales_invoice_items[]
+  sales_sessions    sales_sessions?       @relation("sales_invoices_sales_session", fields: [sales_session_id], references: [id], onUpdate: NoAction, map: "fk_sales_invoices_sales_session")
+  users             users                 @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher           vouchers?             @relation(fields: [voucher_id], references: [id], onUpdate: NoAction)
+  warehouses        warehouses            @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id], map: "idx_sales_invoices_warehouse")
+  @@index([created_at], map: "idx_sales_invoices_created_at")
+  @@index([promotion_id], map: "idx_sales_invoices_promotion")
+  @@index([gift_promotion_id], map: "idx_sales_invoices_gift_promotion")
+  @@index([voucher_id], map: "idx_sales_invoices_voucher")
+  @@index([sales_session_id], map: "idx_sales_invoices_sales_session")
+}
+
+model sales_invoice_items {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoice_id        String              @db.Uuid
+  recipe_id         String              @db.Uuid
+  quantity          Int
+  unit_price        Decimal?            @db.Decimal(12, 2)
+  line_total        Decimal?            @db.Decimal(15, 2)
+  created_at        DateTime?           @default(now()) @db.Timestamp(6)
+  recipe_deductions recipe_deductions[] @relation("recipe_deductions_invoice_item")
+  sales_invoices    sales_invoices      @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_recipes   product_recipes     @relation(fields: [recipe_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([invoice_id], map: "idx_sales_invoice_items_invoice")
+  @@index([recipe_id], map: "idx_sales_invoice_items_recipe")
+}
+
+model suppliers {
+  id             String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String      @db.VarChar(255)
+  contact_person String?     @db.VarChar(255)
+  email          String?     @db.VarChar(255)
+  phone          String?     @db.VarChar(20)
+  address        String?
+  is_active      Boolean     @default(true)
+  created_at     DateTime?   @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?   @default(now()) @db.Timestamp(6)
+  warehouse_id   String?     @db.Uuid
+  warehouses     warehouses? @relation("warehouse_suppliers", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([warehouse_id, name], map: "idx_suppliers_warehouse_name")
+  @@index([warehouse_id], map: "idx_suppliers_warehouse")
+  @@index([name], map: "idx_suppliers_name")
+  @@index([is_active], map: "idx_suppliers_active")
+}
+
+model external_customers {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String                   @db.VarChar(255)
+  address                String?
+  phone                  String?                  @db.VarChar(20)
+  is_active              Boolean                  @default(true)
+  notes                  String?
+  created_at             DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at             DateTime?                @default(now()) @db.Timestamp(6)
+  warehouse_id           String?                  @db.Uuid
+  warehouses             warehouses?              @relation("warehouse_external_customers", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  external_sales_exports external_sales_exports[]
+
+  @@index([name], map: "idx_external_customers_name")
+  @@index([is_active], map: "idx_external_customers_active")
+  @@index([warehouse_id], map: "idx_external_customers_warehouse")
+}
+
+model external_sales_exports {
+  id               String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  export_number    String                        @unique @db.VarChar(100)
+  warehouse_id     String                        @db.Uuid
+  customer_id      String                        @db.Uuid
+  created_by       String                        @db.Uuid
+  approved_by      String?                       @db.Uuid
+  status           external_sales_export_status  @default(ACTIVE)
+  total_amount     Decimal?                      @db.Decimal(15, 2)
+  notes            String?
+  created_at       DateTime?                     @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?                     @default(now()) @db.Timestamp(6)
+  approved_at      DateTime?                     @db.Timestamp(6)
+  deleted_at       DateTime?                     @db.Timestamp(6)
+  items            external_sales_export_items[]
+  approved_by_user users?                        @relation("external_sales_exports_approved_by", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_sales_exports_approved_by")
+  created_by_user  users                         @relation("external_sales_exports_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_sales_exports_created_by")
+  customer         external_customers            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_sales_exports_customer")
+  warehouse        warehouses                    @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_sales_exports_warehouse")
+
+  @@index([warehouse_id], map: "idx_external_sales_exports_warehouse")
+  @@index([customer_id], map: "idx_external_sales_exports_customer")
+  @@index([status], map: "idx_external_sales_exports_status")
+  @@index([created_at], map: "idx_external_sales_exports_created")
+}
+
+model external_sales_export_items {
+  id         String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  export_id  String                 @db.Uuid
+  product_id String                 @db.Uuid
+  quantity   Int
+  unit_id    String                 @db.Uuid
+  unit_price Decimal?               @db.Decimal(12, 2)
+  line_total Decimal?               @db.Decimal(15, 2)
+  created_at DateTime?              @default(now()) @db.Timestamp(6)
+  export     external_sales_exports @relation(fields: [export_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_external_export_items_export")
+  product    products               @relation("external_export_items_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_export_items_product")
+  unit       product_units          @relation("external_export_items_unit", fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_external_export_items_unit")
+
+  @@index([export_id], map: "idx_external_export_items_export")
+  @@index([product_id], map: "idx_external_export_items_product")
+  @@index([unit_id], map: "idx_external_export_items_unit")
+}
+
+model supplier_products {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supplier_id  String         @db.Uuid
+  product_id   String         @db.Uuid
+  unit_price   Decimal        @db.Decimal(12, 2)
+  created_at   DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?      @default(now()) @db.Timestamp(6)
+  menu_type_id String?        @db.Uuid
+  category_id  String?        @db.Uuid
+  unit_id      String?        @db.Uuid
+  categories   categories?    @relation(fields: [category_id], references: [id], onUpdate: NoAction, map: "fk_supplier_products_category")
+  menu_types   menu_types?    @relation(fields: [menu_type_id], references: [id], onUpdate: NoAction, map: "fk_supplier_products_menu_type")
+  unit         product_units? @relation("supplier_products_unit", fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([supplier_id, product_id], map: "idx_supplier_products_unique")
+  @@index([supplier_id], map: "idx_supplier_products_supplier")
+  @@index([product_id], map: "idx_supplier_products_product")
+  @@index([menu_type_id], map: "idx_supplier_products_menu_type")
+  @@index([category_id], map: "idx_supplier_products_category")
+}
+
+model purchase_orders_detail {
+  id           String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  po_number    String                @unique @db.VarChar(100)
+  warehouse_id String                @db.Uuid
+  supplier_id  String                @db.Uuid
+  status       purchase_order_status @default(DRAFT)
+  total_amount Decimal?              @db.Decimal(15, 2)
+  created_by   String                @db.Uuid
+  received_at  DateTime?             @db.Timestamp(6)
+  created_at   DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?             @default(now()) @db.Timestamp(6)
+
+  @@index([status], map: "idx_purchase_orders_detail_status")
+  @@index([warehouse_id], map: "idx_purchase_orders_detail_warehouse")
+  @@index([supplier_id], map: "idx_purchase_orders_detail_supplier")
+}
+
+model purchase_orders_detail_items {
+  id                String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchase_order_id String         @db.Uuid
+  product_id        String         @db.Uuid
+  quantity          Int
+  unit_price        Decimal        @db.Decimal(12, 2)
+  line_total        Decimal?       @db.Decimal(15, 2)
+  received_quantity Int?           @default(0)
+  created_at        DateTime?      @default(now()) @db.Timestamp(6)
+  unit_id           String?        @db.Uuid
+  product_units     product_units? @relation(fields: [unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_purchase_orders_detail_items_unit")
+
+  @@index([purchase_order_id], map: "idx_purchase_orders_detail_items_po")
+  @@index([product_id], map: "idx_purchase_orders_detail_items_product")
+  @@index([unit_id], map: "idx_purchase_orders_detail_items_unit")
+}
+
+model reports {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_number String      @unique @db.VarChar(100)
+  warehouse_id  String      @db.Uuid
+  report_type   report_type
+  start_date    DateTime    @db.Timestamp(6)
+  end_date      DateTime    @db.Timestamp(6)
+  report_data   Json
+  created_by    String      @db.Uuid
+  created_at    DateTime?   @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?   @default(now()) @db.Timestamp(6)
+  users         users       @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses    warehouses  @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([warehouse_id], map: "idx_reports_warehouse")
+  @@index([report_type], map: "idx_reports_type")
+  @@index([created_at], map: "idx_reports_created_at")
+}
+
+model promotions {
+  id                          String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                        String                 @db.VarChar(255)
+  description                 String?
+  discount_type               String                 @db.VarChar(20)
+  discount_value              Decimal                @db.Decimal(12, 2)
+  min_amount                  Decimal?               @db.Decimal(12, 2)
+  is_active                   Boolean                @default(true)
+  start_date                  DateTime?              @db.Timestamp(6)
+  end_date                    DateTime?              @db.Timestamp(6)
+  created_at                  DateTime?              @default(now()) @db.Timestamp(6)
+  updated_at                  DateTime?              @default(now()) @db.Timestamp(6)
+  apply_days                  String?
+  apply_time_type             String?                @default("ALWAYS") @db.VarChar(20)
+  apply_with_other_promotions Boolean?               @default(true)
+  max_discount_amount         Decimal?               @db.Decimal(12, 2)
+  priority                    Int?                   @default(0)
+  promotion_type              String?                @default("DISCOUNT") @db.VarChar(50)
+  time_end                    DateTime?              @db.Time(6)
+  time_start                  DateTime?              @db.Time(6)
+  min_quantity                Int?
+  gift_category_ids           String?
+  min_product_price           Decimal?               @db.Decimal(12, 2)
+  promotion_conditions        promotion_conditions[]
+  promotion_gifts             promotion_gifts[]
+  promotion_products          promotion_products[]
+  promotion_warehouses        promotion_warehouses[]
+
+  @@index([is_active], map: "idx_promotions_active")
+  @@index([start_date, end_date], map: "idx_promotions_dates")
+}
+
+model promotion_warehouses {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promotion_id String     @db.Uuid
+  warehouse_id String     @db.Uuid
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  promotions   promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  warehouses   warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([promotion_id], map: "idx_promotion_warehouses_promotion")
+  @@index([warehouse_id], map: "idx_promotion_warehouses_warehouse")
+}
+
+model promotion_products {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promotion_id      String     @db.Uuid
+  product_id        String?    @db.Uuid
+  quantity_required Int        @default(1)
+  created_at        DateTime?  @default(now()) @db.Timestamp(6)
+  item_id           String?    @db.Uuid
+  item_type         String?    @default("PRODUCT") @db.VarChar(20)
+  products          products?  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  promotions        promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([promotion_id], map: "idx_promotion_products_promotion")
+  @@index([product_id], map: "idx_promotion_products_product")
+  @@index([item_type, item_id], map: "idx_promotion_products_item")
+}
+
+model promotion_gifts {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promotion_id String     @db.Uuid
+  product_id   String?    @db.Uuid
+  quantity     Int        @default(1)
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  item_id      String?    @db.Uuid
+  item_type    String?    @default("PRODUCT") @db.VarChar(20)
+  products     products?  @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  promotions   promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([promotion_id], map: "idx_promotion_gifts_promotion")
+  @@index([product_id], map: "idx_promotion_gifts_product")
+  @@index([item_type, item_id], map: "idx_promotion_gifts_item")
+}
+
+model promotion_conditions {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  promotion_id    String     @db.Uuid
+  condition_type  String     @db.VarChar(50)
+  condition_value String?
+  created_at      DateTime?  @default(now()) @db.Timestamp(6)
+  promotions      promotions @relation(fields: [promotion_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([promotion_id], map: "idx_promotion_conditions_promotion")
+}
+
+model voucher_programs {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String             @db.VarChar(255)
+  description      String?
+  discount_type    String             @db.VarChar(20)
+  discount_value   Decimal            @db.Decimal(12, 2)
+  min_amount       Decimal?           @db.Decimal(12, 2)
+  total_codes      Int                @default(0)
+  is_active        Boolean            @default(true)
+  start_date       DateTime?          @db.Timestamp(6)
+  end_date         DateTime?          @db.Timestamp(6)
+  created_at       DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?          @default(now()) @db.Timestamp(6)
+  min_quantity     Int?
+  warehouse_id     String?            @db.Uuid
+  voucher_gifts    voucher_gifts[]
+  voucher_products voucher_products[]
+  warehouses       warehouses?        @relation("voucher_programs_warehouse", fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vouchers         vouchers[]
+
+  @@index([is_active], map: "idx_voucher_programs_active")
+  @@index([start_date, end_date], map: "idx_voucher_programs_dates")
+  @@index([warehouse_id], map: "idx_voucher_programs_warehouse")
+}
+
+model vouchers {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code           String           @unique @db.VarChar(50)
+  created_at     DateTime?        @default(now()) @db.Timestamp(6)
+  program_id     String           @db.Uuid
+  is_used        Boolean          @default(false)
+  used_at        DateTime?        @db.Timestamp(6)
+  sales_invoices sales_invoices[]
+  program        voucher_programs @relation(fields: [program_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([code], map: "idx_vouchers_code")
+  @@index([program_id], map: "idx_vouchers_program")
+  @@index([is_used], map: "idx_vouchers_is_used")
+}
+
+model shift_sessions {
+  id                                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id                            String               @db.Uuid
+  user_id                                 String               @db.Uuid
+  session_date                            DateTime             @db.Date
+  check_in_time                           DateTime?            @db.Timestamp(6)
+  check_out_time                          DateTime?            @db.Timestamp(6)
+  actual_duration                         Int?
+  status                                  shift_session_status @default(IN_PROGRESS)
+  notes                                   String?
+  created_at                              DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at                              DateTime?            @default(now()) @db.Timestamp(6)
+  work_shift_id                           String?              @db.Uuid
+  check_in_device_info                    String?
+  check_in_ip                             String?              @db.VarChar(45)
+  check_in_location                       Json?
+  check_out_device_info                   String?
+  check_out_ip                            String?              @db.VarChar(45)
+  check_out_location                      Json?
+  modification_reason                     String?
+  modified_at                             DateTime?            @db.Timestamp(6)
+  modified_by                             String?              @db.Uuid
+  shift_assignment_id                     String?              @db.Uuid
+  logs                                    shift_session_logs[] @relation("ShiftSessionLogs")
+  shift_assignment                        shift_assignments?   @relation(fields: [shift_assignment_id], references: [id], onUpdate: NoAction, map: "fk_shift_sessions_assignment")
+  users_shift_sessions_user_idTousers     users                @relation("shift_sessions_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_shift_sessions_user")
+  warehouses                              warehouses           @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_shift_sessions_warehouse")
+  work_shifts                             work_shifts?         @relation(fields: [work_shift_id], references: [id], onUpdate: NoAction, map: "fk_shift_sessions_work_shift")
+  users_shift_sessions_modified_byTousers users?               @relation("shift_sessions_modified_byTousers", fields: [modified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id, session_date], map: "idx_shift_sessions_user_date")
+  @@index([session_date], map: "idx_shift_sessions_date")
+  @@index([session_date], map: "idx_shift_sessions_session_date")
+  @@index([status], map: "idx_shift_sessions_status")
+  @@index([user_id], map: "idx_shift_sessions_user")
+  @@index([warehouse_id], map: "idx_shift_sessions_warehouse")
+  @@index([work_shift_id], map: "idx_shift_sessions_work_shift")
+  @@index([shift_assignment_id], map: "idx_shift_sessions_assignment")
+}
+
+model voucher_gifts {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  program_id       String           @db.Uuid
+  item_type        String           @default("PRODUCT") @db.VarChar(20)
+  item_id          String           @db.Uuid
+  quantity         Int              @default(1)
+  created_at       DateTime?        @default(now()) @db.Timestamp(6)
+  voucher_programs voucher_programs @relation(fields: [program_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([item_type, item_id], map: "idx_voucher_gifts_item")
+  @@index([program_id], map: "idx_voucher_gifts_program")
+}
+
+model voucher_products {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  program_id        String           @db.Uuid
+  item_type         String           @default("PRODUCT") @db.VarChar(20)
+  item_id           String           @db.Uuid
+  quantity_required Int              @default(1)
+  created_at        DateTime?        @default(now()) @db.Timestamp(6)
+  voucher_programs  voucher_programs @relation(fields: [program_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([item_type, item_id], map: "idx_voucher_products_item")
+  @@index([program_id], map: "idx_voucher_products_program")
+}
+
+model shift_assignments {
+  id                  String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  work_shift_id       String                @db.Uuid
+  user_id             String                @db.Uuid
+  warehouse_id        String                @db.Uuid
+  assigned_date       DateTime              @db.Date
+  assigned_by         String                @db.Uuid
+  created_at          DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime?             @default(now()) @db.Timestamp(6)
+  notes               String?
+  attendance_sessions attendance_sessions[]
+  users_assigner      users                 @relation("shift_assignments_assigner", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_shift_assignments_assigner")
+  users_assigned      users                 @relation("shift_assignments_user", fields: [user_id], references: [id], onDelete: Cascade, map: "fk_shift_assignments_user")
+  warehouses          warehouses            @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, map: "fk_shift_assignments_warehouse")
+  work_shifts         work_shifts           @relation(fields: [work_shift_id], references: [id], onDelete: Cascade, map: "fk_shift_assignments_work_shift")
+  shift_sessions      shift_sessions[]
+
+  @@index([user_id, assigned_date], map: "idx_shift_assignments_user_date")
+  @@index([work_shift_id], map: "idx_shift_assignments_shift")
+  @@index([assigned_date], map: "idx_shift_assignments_date")
+  @@index([warehouse_id], map: "idx_shift_assignments_warehouse")
+}
+
+model shift_swap_requests {
+  id                   String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requester_user_id    String            @db.Uuid
+  requester_date       DateTime          @db.Date
+  target_user_id       String?           @db.Uuid
+  target_date          DateTime?         @db.Date
+  status               shift_swap_status @default(PENDING)
+  requester_reason     String
+  target_response      String?
+  approved_by          String?           @db.Uuid
+  approved_at          DateTime?         @db.Timestamp(6)
+  rejection_reason     String?
+  created_at           DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at           DateTime?         @default(now()) @db.Timestamp(6)
+  target_work_shift_id String?           @db.Uuid
+  warehouse_id         String?           @db.Uuid
+  work_shift_id        String?           @db.Uuid
+  swap_type            shift_swap_type   @default(SWAP)
+  users_approver       users?            @relation("shift_swap_requests_approver", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_shift_swap_requests_approver")
+  users_requester      users             @relation("shift_swap_requests_requester", fields: [requester_user_id], references: [id], onDelete: Cascade, map: "fk_shift_swap_requests_requester")
+  users_target         users?            @relation("shift_swap_requests_target", fields: [target_user_id], references: [id], onDelete: Cascade, map: "fk_shift_swap_requests_target")
+  target_work_shifts   work_shifts?      @relation("target_shift", fields: [target_work_shift_id], references: [id])
+  warehouses           warehouses?       @relation(fields: [warehouse_id], references: [id], onDelete: Cascade)
+  work_shifts          work_shifts?      @relation("requester_shift", fields: [work_shift_id], references: [id])
+
+  @@index([requester_user_id], map: "idx_shift_swap_requests_requester")
+  @@index([target_user_id], map: "idx_shift_swap_requests_target")
+  @@index([status], map: "idx_shift_swap_requests_status")
+  @@index([created_at], map: "idx_shift_swap_requests_created")
+  @@index([work_shift_id], map: "idx_shift_swap_requests_work_shift")
+  @@index([warehouse_id], map: "idx_shift_swap_requests_warehouse")
+  @@index([target_work_shift_id], map: "idx_shift_swap_requests_target_work_shift")
+}
+
+
+
+model work_shifts {
+  id                            String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id                  String                        @db.Uuid
+  shift_name                    String                        @db.VarChar(100)
+  shift_code                    String                        @unique @db.VarChar(20)
+  start_time                    DateTime                      @db.Time(6)
+  end_time                      DateTime                      @db.Time(6)
+  description                   String?
+  is_active                     Boolean                       @default(true)
+  created_at                    DateTime?                     @default(now()) @db.Timestamp(6)
+  updated_at                    DateTime?                     @default(now()) @db.Timestamp(6)
+  attendance_sessions           attendance_sessions[]
+  leave_requests                leave_requests[]
+  sales_sessions                sales_sessions[]
+  shift_assignments             shift_assignments[]
+  shift_registration_requests   shift_registration_requests[]
+  shift_sessions                shift_sessions[]
+  shift_swap_requests_target    shift_swap_requests[]         @relation("target_shift")
+  shift_swap_requests_requester shift_swap_requests[]         @relation("requester_shift")
+  warehouses                    warehouses                    @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_work_shifts_warehouse")
+
+  @@index([is_active], map: "idx_work_shifts_active")
+  @@index([warehouse_id], map: "idx_work_shifts_warehouse")
+}
+
+model product_package_units {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  product_id      String        @db.Uuid
+  package_unit_id String        @db.Uuid
+  base_quantity   Decimal       @db.Decimal(18, 6)
+  package_name    String        @db.VarChar(255)
+  is_default      Boolean       @default(false)
+  is_sellable     Boolean       @default(true)
+  is_purchasable  Boolean       @default(true)
+  is_transferable Boolean       @default(true)
+  created_at      DateTime?     @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?     @default(now()) @db.Timestamp(6)
+  products        products      @relation(fields: [product_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_product_package_units_product")
+  product_units   product_units @relation(fields: [package_unit_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_product_package_units_unit")
+
+  @@unique([product_id, package_unit_id, base_quantity], map: "idx_product_package_units_unique")
+  @@index([product_id], map: "idx_product_package_units_product")
+  @@index([package_unit_id], map: "idx_product_package_units_unit")
+}
+
+model warehouse_category_permissions {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id String     @db.Uuid
+  category_id  String     @db.Uuid
+  is_allowed   Boolean    @default(true)
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?  @default(now()) @db.Timestamp(6)
+  categories   categories @relation(fields: [category_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_category_permissions_category")
+  warehouses   warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_category_permissions_warehouse")
+
+  @@unique([warehouse_id, category_id], map: "idx_warehouse_category_permissions_unique")
+  @@index([warehouse_id], map: "idx_warehouse_category_permissions_warehouse")
+  @@index([category_id], map: "idx_warehouse_category_permissions_category")
+}
+
+model shift_registration_requests {
+  id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String                    @db.Uuid
+  work_shift_id    String                    @db.Uuid
+  warehouse_id     String                    @db.Uuid
+  requested_date   DateTime                  @db.Date
+  status           shift_registration_status @default(PENDING)
+  notes            String?
+  approved_by      String?                   @db.Uuid
+  approved_at      DateTime?                 @db.Timestamp(6)
+  rejection_reason String?
+  created_at       DateTime?                 @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?                 @default(now()) @db.Timestamp(6)
+  users_approver   users?                    @relation("shift_registration_requests_approver", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_shift_registration_requests_approver")
+  users_requester  users                     @relation("shift_registration_requests_user", fields: [user_id], references: [id], onDelete: Cascade, map: "fk_shift_registration_requests_user")
+  warehouses       warehouses                @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, map: "fk_shift_registration_requests_warehouse")
+  work_shifts      work_shifts               @relation(fields: [work_shift_id], references: [id], onDelete: Cascade, map: "fk_shift_registration_requests_work_shift")
+
+  @@unique([user_id, requested_date], map: "idx_shift_registration_requests_user_date")
+  @@index([work_shift_id], map: "idx_shift_registration_requests_shift")
+  @@index([warehouse_id], map: "idx_shift_registration_requests_warehouse")
+  @@index([status], map: "idx_shift_registration_requests_status")
+  @@index([requested_date], map: "idx_shift_registration_requests_date")
+}
+
+model leave_requests {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String               @db.Uuid
+  warehouse_id     String               @db.Uuid
+  leave_date       DateTime             @db.Date
+  work_shift_id    String?              @db.Uuid
+  reason           String?
+  status           leave_request_status @default(PENDING)
+  approved_by      String?              @db.Uuid
+  approved_at      DateTime?            @db.Timestamp(6)
+  rejection_reason String?
+  created_at       DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?            @default(now()) @db.Timestamp(6)
+  users_approver   users?               @relation("leave_requests_approver", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_leave_requests_approver")
+  users_requester  users                @relation("leave_requests_user", fields: [user_id], references: [id], onDelete: Cascade, map: "fk_leave_requests_user")
+  warehouses       warehouses           @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, map: "fk_leave_requests_warehouse")
+  work_shifts      work_shifts?         @relation(fields: [work_shift_id], references: [id], map: "fk_leave_requests_work_shift")
+
+  @@unique([user_id, leave_date], map: "idx_leave_requests_user_date")
+  @@index([user_id], map: "idx_leave_requests_user")
+  @@index([warehouse_id], map: "idx_leave_requests_warehouse")
+  @@index([leave_date], map: "idx_leave_requests_date")
+  @@index([status], map: "idx_leave_requests_status")
+}
+
+model shift_session_logs {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shift_session_id String           @db.Uuid
+  action           shift_log_action
+  previous_value   Json?
+  new_value        Json?
+  performed_by     String?          @db.Uuid
+  performed_at     DateTime?        @default(now()) @db.Timestamp(6)
+  ip_address       String?          @db.VarChar(45)
+  user_agent       String?
+  location         Json?
+  users            users?           @relation(fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  session          shift_sessions   @relation("ShiftSessionLogs", fields: [shift_session_id], references: [id], onDelete: Cascade)
+
+  @@index([shift_session_id], map: "idx_shift_session_logs_session")
+  @@index([performed_by], map: "idx_shift_session_logs_performer")
+}
+
+model shift_attendance_audit_logs {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  session_id          String    @db.Uuid
+  old_check_in_time   DateTime? @db.Timestamp(6)
+  old_check_out_time  DateTime? @db.Timestamp(6)
+  old_status          String?   @db.VarChar(50)
+  old_notes           String?
+  new_check_in_time   DateTime? @db.Timestamp(6)
+  new_check_out_time  DateTime? @db.Timestamp(6)
+  new_status          String?   @db.VarChar(50)
+  new_notes           String?
+  modified_by         String    @db.Uuid
+  modified_at         DateTime? @default(now()) @db.Timestamp(6)
+  modification_reason String?
+  action_type         String    @db.VarChar(50)
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+  modification_gps    Json?
+  modification_ip     String?   @db.VarChar(45)
+
+  @@index([session_id], map: "idx_attendance_audit_session_id")
+  @@index([modified_by], map: "idx_attendance_audit_modified_by")
+  @@index([created_at], map: "idx_attendance_audit_created_at")
+}
+
+model device_tokens {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token      String
+  platform   String?   @default("android") @db.VarChar(20)
+  active     Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_device_tokens_user_id")
+
+  @@unique([user_id, token], map: "idx_device_tokens_user_token")
+  @@index([user_id], map: "idx_device_tokens_user_id")
+  @@index([token], map: "idx_device_tokens_token")
+  @@index([active], map: "idx_device_tokens_active")
+}
+
+model notifications {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String            @db.Uuid
+  type         notification_type
+  title        String            @db.VarChar(255)
+  message      String
+  data         Json?
+  redirect_url String?           @db.VarChar(500)
+  is_read      Boolean           @default(false)
+  created_at   DateTime          @default(now()) @db.Timestamp(6)
+  read_at      DateTime?         @db.Timestamp(6)
+  users        users             @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_user_id")
+
+  @@index([user_id, is_read], map: "idx_notifications_user_is_read")
+  @@index([user_id, created_at(sort: Desc)], map: "idx_notifications_user_created_at")
+  @@index([created_at], map: "idx_notifications_created_at")
+}
+
+model warehouse_printer_configs {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id    String     @db.Uuid
+  printer_id      String     @db.VarChar(255)
+  printer_name    String     @db.VarChar(255)
+  printer_type    String     @default("thermal_80mm") @db.VarChar(50)
+  connection_type String     @default("bluetooth") @db.VarChar(20)
+  ip_address      String?    @db.VarChar(45)
+  port            Int?
+  document_type   String?                    @db.VarChar(50)
+  printer_function printer_function?
+  is_default      Boolean                   @default(false)
+  created_at      DateTime?                 @default(now()) @db.Timestamp(6)
+  updated_at      DateTime?                 @default(now()) @db.Timestamp(6)
+  category_mappings printer_category_mappings[]
+  warehouses      warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_printer_configs_warehouse")
+
+  @@unique([warehouse_id, document_type], map: "idx_warehouse_printer_configs_unique")
+  @@index([warehouse_id], map: "idx_warehouse_printer_configs_warehouse")
+  @@index([document_type], map: "idx_warehouse_printer_configs_document_type")
+  @@index([printer_function], map: "idx_warehouse_printer_configs_function")
+}
+
+model printer_category_mappings {
+  id                String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  printer_config_id String                    @db.Uuid
+  category_id       String                    @db.Uuid
+  created_at        DateTime                  @default(now()) @db.Timestamp(6)
+  
+  printer_config    warehouse_printer_configs @relation(fields: [printer_config_id], references: [id], onDelete: Cascade)
+  category          categories                @relation(fields: [category_id], references: [id], onDelete: Cascade)
+
+  @@unique([printer_config_id, category_id])
+  @@index([printer_config_id])
+  @@index([category_id])
+}
+
+model user_warehouse_assignments {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id      String     @db.Uuid
+  warehouse_id String     @db.Uuid
+  assigned_by  String?    @db.Uuid
+  assigned_at  DateTime?  @default(now()) @db.Timestamp(6)
+  is_primary   Boolean    @default(false)
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  assigner     users?     @relation("user_warehouse_assignments_assigner", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_warehouse_assignments_assigner")
+  users        users      @relation("user_warehouse_assignments_user", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_warehouse_assignments_user")
+  warehouses   warehouses @relation("user_warehouse_assignments_warehouse", fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_warehouse_assignments_warehouse")
+
+  @@unique([user_id, warehouse_id], map: "idx_user_warehouse_assignments_unique")
+  @@index([user_id], map: "idx_user_warehouse_assignments_user")
+  @@index([warehouse_id], map: "idx_user_warehouse_assignments_warehouse")
+}
+
+model warehouse_sales_targets {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  warehouse_id   String     @db.Uuid
+  day_of_week    Int
+  shift_a_target Decimal?   @db.Decimal(15, 2)
+  shift_b_target Decimal?   @db.Decimal(15, 2)
+  shift_c_target Decimal?   @db.Decimal(15, 2)
+  shift_d_target Decimal?   @db.Decimal(15, 2)
+  daily_target   Decimal?   @db.Decimal(15, 2)
+  created_at     DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?  @default(now()) @db.Timestamp(6)
+  warehouses     warehouses @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_warehouse_sales_targets_warehouse")
+
+  @@unique([warehouse_id, day_of_week], map: "idx_warehouse_sales_targets_unique")
+  @@index([warehouse_id], map: "idx_warehouse_sales_targets_warehouse")
+}
+
+model attendance_sessions {
+  id                                           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                      String             @db.Uuid
+  warehouse_id                                 String             @db.Uuid
+  session_date                                 DateTime           @db.Date
+  work_shift_id                                String?            @db.Uuid
+  shift_assignment_id                          String?            @db.Uuid
+  check_in_time                                DateTime?          @db.Timestamp(6)
+  check_in_ip                                  String?            @db.VarChar(45)
+  check_in_location                            Json?
+  check_in_device_info                         String?
+  is_late_checkin                              Boolean            @default(false)
+  late_minutes                                 Int?
+  check_out_time                               DateTime?          @db.Timestamp(6)
+  check_out_ip                                 String?            @db.VarChar(45)
+  check_out_location                           Json?
+  check_out_device_info                        String?
+  is_early_checkout                            Boolean            @default(false)
+  early_minutes                                Int?
+  actual_duration                              Int?
+  status                                       attendance_status  @default(CHECKED_IN)
+  notes                                        String?
+  modified_by                                  String?            @db.Uuid
+  modified_at                                  DateTime?          @db.Timestamp(6)
+  modification_reason                          String?
+  created_at                                   DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at                                   DateTime?          @default(now()) @db.Timestamp(6)
+  users_attendance_sessions_modified_byTousers users?             @relation("attendance_sessions_modified_byTousers", fields: [modified_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  shift_assignments                            shift_assignments? @relation(fields: [shift_assignment_id], references: [id], onUpdate: NoAction, map: "fk_attendance_sessions_assignment")
+  users_attendance_sessions_user_idTousers     users              @relation("attendance_sessions_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_attendance_sessions_user")
+  warehouses                                   warehouses         @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_attendance_sessions_warehouse")
+  work_shifts                                  work_shifts?       @relation(fields: [work_shift_id], references: [id], onUpdate: NoAction, map: "fk_attendance_sessions_work_shift")
+
+  @@index([user_id, session_date], map: "idx_attendance_sessions_user_date")
+  @@index([session_date], map: "idx_attendance_sessions_date")
+  @@index([status], map: "idx_attendance_sessions_status")
+  @@index([user_id], map: "idx_attendance_sessions_user")
+  @@index([warehouse_id], map: "idx_attendance_sessions_warehouse")
+  @@index([work_shift_id], map: "idx_attendance_sessions_work_shift")
+  @@index([shift_assignment_id], map: "idx_attendance_sessions_assignment")
+}
+
+model sales_sessions {
+  id                                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                 String               @db.Uuid
+  warehouse_id                            String               @db.Uuid
+  session_date                            DateTime             @db.Date
+  work_shift_id                           String?              @db.Uuid
+  shift_opened_at                         DateTime             @db.Timestamp(6)
+  opening_cash                            Decimal              @db.Decimal(15, 2)
+  opening_cash_user_id                    String?              @db.Uuid
+  shift_closed_at                         DateTime?            @db.Timestamp(6)
+  closing_cash                            Decimal?             @db.Decimal(15, 2)
+  closing_cash_user_id                    String?              @db.Uuid
+  expected_cash                           Decimal?             @db.Decimal(15, 2)
+  cash_difference                         Decimal?             @db.Decimal(15, 2)
+  total_orders                            Int                  @default(0)
+  total_revenue                           Decimal              @default(0) @db.Decimal(15, 2)
+  total_discount                          Decimal              @default(0) @db.Decimal(15, 2)
+  cash_orders                             Int                  @default(0)
+  transfer_orders                         Int                  @default(0)
+  ewallet_orders                          Int                  @default(0)
+  transfer_total                          Decimal              @default(0) @db.Decimal(15, 2)
+  ewallet_total                           Decimal              @default(0) @db.Decimal(15, 2)
+  vouchers_used                           Int                  @default(0)
+  status                                  sales_session_status @default(IN_PROGRESS)
+  notes                                   String?
+  approved_by                             String?              @db.Uuid
+  approved_at                             DateTime?            @db.Timestamp(6)
+  rejection_reason                        String?
+  created_at                              DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at                              DateTime?            @default(now()) @db.Timestamp(6)
+  sales_invoices_new                      sales_invoices[]     @relation("sales_invoices_sales_session")
+  users_sales_sessions_user_idTousers     users                @relation("sales_sessions_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sales_sessions_user")
+  warehouses                              warehouses           @relation(fields: [warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sales_sessions_warehouse")
+  work_shifts                             work_shifts?         @relation(fields: [work_shift_id], references: [id], onUpdate: NoAction, map: "fk_sales_sessions_work_shift")
+  users_sales_sessions_approved_byTousers users?               @relation("sales_sessions_approved_byTousers", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  closing_cash_user                       users?               @relation("sales_sessions_closing_cash_user", fields: [closing_cash_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  opening_cash_user                       users?               @relation("sales_sessions_opening_cash_user", fields: [opening_cash_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id, session_date], map: "idx_sales_sessions_user_date")
+  @@index([session_date], map: "idx_sales_sessions_date")
+  @@index([status], map: "idx_sales_sessions_status")
+  @@index([user_id], map: "idx_sales_sessions_user")
+  @@index([warehouse_id], map: "idx_sales_sessions_warehouse")
+  @@index([work_shift_id], map: "idx_sales_sessions_work_shift")
+}
+
+model salary_advance_requests {
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id              String                @db.Uuid
+  warehouse_id         String                @db.Uuid
+  reason               String
+  desired_date         DateTime              @db.Date
+  amount               Decimal               @db.Decimal(15, 2)
+  status               salary_advance_status @default(PENDING)
+  approved_by          String?               @db.Uuid
+  approved_at          DateTime?             @db.Timestamp(6)
+  rejection_reason     String?
+  created_at           DateTime?             @default(now()) @db.Timestamp(6)
+  updated_at           DateTime?             @default(now()) @db.Timestamp(6)
+  admin_approved_at    DateTime?             @db.Timestamp(6)
+  admin_approved_by    String?               @db.Uuid
+  hr_approved_at       DateTime?             @db.Timestamp(6)
+  hr_approved_by       String?               @db.Uuid
+  users_approver       users?                @relation("salary_advance_requests_approver", fields: [approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_salary_advance_requests_approver")
+  users_requester      users                 @relation("salary_advance_requests_user", fields: [user_id], references: [id], onDelete: Cascade, map: "fk_salary_advance_requests_user")
+  warehouses           warehouses            @relation(fields: [warehouse_id], references: [id], onDelete: Cascade, map: "fk_salary_advance_requests_warehouse")
+  users_admin_approver users?                @relation("salary_advance_requests_admin_approver", fields: [admin_approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_hr_approver    users?                @relation("salary_advance_requests_hr_approver", fields: [hr_approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id], map: "idx_salary_advance_requests_user")
+  @@index([warehouse_id], map: "idx_salary_advance_requests_warehouse")
+  @@index([status], map: "idx_salary_advance_requests_status")
+  @@index([created_at], map: "idx_salary_advance_requests_created")
+}
+
+model system_settings {
+  key         String    @id @db.VarChar(100)
+  value       String
+  description String?
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model internal_transfer_requests {
+  id                       String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  request_number           String                            @unique @db.VarChar(100)
+  from_warehouse_id        String                            @db.Uuid
+  to_warehouse_id          String                            @db.Uuid
+  status                   internal_transfer_status          @default(CHO_QUAN_LY_DUYET)
+  created_by               String                            @db.Uuid
+  created_at               DateTime?                         @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?                         @default(now()) @db.Timestamp(6)
+  manager_approved_by      String?                           @db.Uuid
+  manager_approved_at      DateTime?                         @db.Timestamp(6)
+  manager_notes            String?
+  gm_approved_by           String?                           @db.Uuid
+  gm_approved_at           DateTime?                         @db.Timestamp(6)
+  gm_notes                 String?
+  exported_by              String?                           @db.Uuid
+  exported_at              DateTime?                         @db.Timestamp(6)
+  export_notes             String?
+  received_by              String?                           @db.Uuid
+  received_at              DateTime?                         @db.Timestamp(6)
+  has_discrepancy          Boolean                           @default(false)
+  discrepancy_confirmed_by String?                           @db.Uuid
+  discrepancy_confirmed_at DateTime?                         @db.Timestamp(6)
+  rejected_by              String?                           @db.Uuid
+  rejection_reason         String?
+  items                    internal_transfer_request_items[]
+  users_created            users                             @relation("internal_transfers_created_by", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_discrepancy        users?                            @relation("internal_transfers_discrepancy_confirmed", fields: [discrepancy_confirmed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_exported           users?                            @relation("internal_transfers_exported_by", fields: [exported_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_from          warehouses                        @relation("internal_transfers_from_warehouse", fields: [from_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_gm                 users?                            @relation("internal_transfers_gm_approved", fields: [gm_approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_manager            users?                            @relation("internal_transfers_manager_approved", fields: [manager_approved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_received           users?                            @relation("internal_transfers_received_by", fields: [received_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users_rejected           users?                            @relation("internal_transfers_rejected_by", fields: [rejected_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  warehouses_to            warehouses                        @relation("internal_transfers_to_warehouse", fields: [to_warehouse_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([from_warehouse_id], map: "idx_internal_transfers_from")
+  @@index([to_warehouse_id], map: "idx_internal_transfers_to")
+  @@index([status], map: "idx_internal_transfers_status")
+  @@index([created_at], map: "idx_internal_transfers_created")
+}
+
+model internal_transfer_request_items {
+  id                   String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  request_id           String                     @db.Uuid
+  product_id           String                     @db.Uuid
+  requested_quantity   Decimal                    @db.Decimal(18, 6)
+  requested_unit_id    String                     @db.Uuid
+  manager_quantity     Decimal?                   @db.Decimal(18, 6)
+  manager_unit_id      String?                    @db.Uuid
+  current_stock        Decimal?                   @db.Decimal(18, 6)
+  exported_quantity    Decimal?                   @db.Decimal(18, 6)
+  exported_unit_id     String?                    @db.Uuid
+  main_stock_before    Decimal?                   @db.Decimal(18, 6)
+  received_quantity    Decimal?                   @db.Decimal(18, 6)
+  received_unit_id     String?                    @db.Uuid
+  discrepancy_quantity Decimal?                   @db.Decimal(18, 6)
+  confirmed_quantity   Decimal?                   @db.Decimal(18, 6)
+  created_at           DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_at           DateTime?                  @default(now()) @db.Timestamp(6)
+  exported_unit        product_units?             @relation("internal_transfer_items_exported_unit", fields: [exported_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  manager_unit         product_units?             @relation("internal_transfer_items_manager_unit", fields: [manager_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  product              products                   @relation("internal_transfer_items_product", fields: [product_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  received_unit        product_units?             @relation("internal_transfer_items_received_unit", fields: [received_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  request              internal_transfer_requests @relation(fields: [request_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  requested_unit       product_units              @relation("internal_transfer_items_requested_unit", fields: [requested_unit_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([request_id], map: "idx_internal_transfer_items_request")
+  @@index([product_id], map: "idx_internal_transfer_items_product")
+}
+
+enum transaction_type {
+  SALES
+  IMPORT
+  EXPORT
+  TRANSFER_OUT
+  TRANSFER_IN
+  LOSS
+  ADJUSTMENT
+  PRODUCTION
+}
+
+enum transfer_status {
+  PENDING
+  APPROVED
+  REJECTED
+  COMPLETED
+  CHO_DUYET
+  DA_DUYET
+  DA_XUAT_KHO
+  HOAN_THANH
+  HUY_BO
+  CHO_ADMIN_XAC_NHAN
+  TU_CHOI
+}
+
+enum user_role {
+  ADMIN
+  WAREHOUSE_MANAGER
+  WAREHOUSE_STAFF
+  STAFF
+  ATTENDANCE_STAFF
+  MANAGER
+  GENERAL_MANAGER
+  HR
+}
+
+enum employment_type {
+  FULLTIME
+  PARTTIME
+}
+
+enum shift_swap_type {
+  SWAP
+  REPLACE
+}
+
+enum shift_swap_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum warehouse_type {
+  MAIN
+  STORE
+  PARTNER
+}
+
+enum inventory_intake_status {
+  PENDING_WAREHOUSE_APPROVAL
+  APPROVED_BY_WAREHOUSE
+  APPROVED_BY_BM
+  REJECTED_BY_WAREHOUSE
+  REJECTED_BY_BM
+}
+
+enum inventory_check_status {
+  IN_PROGRESS
+  PENDING_APPROVAL
+  COMPLETED
+}
+
+enum purchase_order_status {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RECEIVED
+  CANCELLED
+  PENDING_RECEIPT
+}
+
+enum external_sales_export_status {
+  ACTIVE
+  DELETED
+}
+
+enum report_type {
+  DASHBOARDS
+  SALES
+  INVENTORY
+  TRANSFER
+  PRODUCTION
+  FINANCIAL
+}
+
+enum shift_session_status {
+  IN_PROGRESS
+  PENDING_APPROVAL
+  COMPLETED
+  REJECTED
+}
+
+enum shift_registration_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum leave_request_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum shift_log_action {
+  CHECK_IN
+  CHECK_OUT
+  EDIT_ATTENDANCE
+}
+
+enum work_status {
+  ACTIVE
+  INACTIVE
+}
+
+enum notification_type {
+  SHIFT_SWAP_CREATED
+  SHIFT_SWAP_ACCEPTED
+  SHIFT_SWAP_APPROVED
+  SHIFT_SWAP_REJECTED
+  SHIFT_REGISTRATION_APPROVED
+  SHIFT_REGISTRATION_REJECTED
+  LEAVE_REQUEST_APPROVED
+  LEAVE_REQUEST_REJECTED
+  TRANSFER_CREATED
+  TRANSFER_APPROVED
+  TRANSFER_REJECTED
+  TRANSFER_READY_EXPORT
+  TRANSFER_RECEIVED
+  CHECK_IN_LATE
+  CASH_DISCREPANCY
+  ATTENDANCE_MODIFIED
+  SYSTEM_ANNOUNCEMENT
+  SALARY_ADVANCE_CREATED
+  SALARY_ADVANCE_APPROVED
+  SALARY_ADVANCE_REJECTED
+  LEAVE_REQUEST_PENDING
+}
+
+enum attendance_status {
+  CHECKED_IN
+  COMPLETED
+  ABSENT
+  LATE
+}
+
+enum sales_session_status {
+  IN_PROGRESS
+  PENDING_APPROVAL
+  COMPLETED
+  REJECTED
+}
+
+enum salary_advance_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  HR_APPROVED
+}
+
+enum internal_transfer_status {
+  CHO_QUAN_LY_DUYET
+  CHO_TONG_QUAN_LY_DUYET
+  CHO_KHO_TONG_XUAT
+  DA_XUAT_KHO
+  CHO_XAC_NHAN_CHENH_LECH
+  HOAN_THANH
+  TU_CHOI
+  HUY_BO
+  CHO_DONG_BO_KHO_TONG
+}
+
+enum printer_function {
+  BILL
+  KITCHEN
+  LABEL
+}

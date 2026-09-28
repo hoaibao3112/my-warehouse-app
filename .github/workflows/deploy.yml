@@ -1,0 +1,165 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: ["main"]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Copy monitoring config to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          source: "docker-compose.monitoring.yml,monitoring/"
+          target: "/opt/warehouse-express"
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          # Chuyển tên Repo sang chữ thường để tránh lỗi Docker (Docker không hỗ trợ chữ hoa)
+          IMAGE_TAG: ghcr.io/${{ github.repository }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: GHCR_PAT,GHCR_USERNAME,IMAGE_TAG
+          script: |
+            # Dừng ngay nếu có lỗi xảy ra (Quan trọng để GitHub báo đỏ nếu sai)
+            set -e
+
+            # Chuyển IMAGE_TAG sang chữ thường (lowercase) ngay trên VPS để chắc chắn
+            IMAGE=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]'):latest
+
+            # 1. Tạo thư mục dự án
+            mkdir -p /opt/warehouse-express
+            cd /opt/warehouse-express
+
+            # Sửa lỗi format file .env (QUAN TRỌNG: Fix triệt để các lỗi cú pháp)
+            if [ -f .env ]; then
+              # 1. Loại bỏ ký tự \r (Windows line endings)
+              sed -i 's/\r$//' .env
+              # 2. Loại bỏ khoảng trắng quanh dấu =
+              sed -i 's/ *= */=/' .env
+              # 3. Loại bỏ khoảng trắng thừa ở cuối dòng
+              sed -i 's/[[:space:]]*$//' .env
+              # 4. Loại bỏ comment inline (ví dụ: ... # Localhost)
+              sed -i 's/ #.*//' .env
+              # 5. Loại bỏ dấu ngoặc kép/đơn bao quanh DATABASE_URL (Docker đọc cả ngoặc)
+              sed -i 's/^DATABASE_URL="\([^"]*\)"$/DATABASE_URL=\1/' .env
+              sed -i "s/^DATABASE_URL='\([^']*\)'$/DATABASE_URL=\1/" .env
+            fi
+
+            # 2. Login Docker
+            echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
+            
+            # 3. Pull image mới nhất
+            echo "Pulling image: $IMAGE"
+            docker pull $IMAGE
+            
+            # 4. Stop container cũ
+            # Tắt set -e để không lỗi nếu container không tồn tại
+            set +e
+            docker stop warehouse-express
+            docker rm warehouse-express
+            set -e
+            
+            # 4.5. Khởi tạo Network và Redis (Chạy Job Queue)
+            docker network create wh-network || true
+            set +e
+            docker stop warehouse-redis
+            docker rm warehouse-redis
+            set -e
+            docker run -d \
+              --name warehouse-redis \
+               -p 6379:6379 \
+              --network wh-network \
+              --restart unless-stopped \
+              redis:alpine
+
+            # 5. Run container mới (Port 3000 Prod)
+            # Thêm TZ để sửa lỗi múi giờ
+            # Thêm HOSTNAME=0.0.0.0 để đảm bảo app lắng nghe mọi IP (Bắt buộc với Docker)
+            # Thêm cấu hình mảng REDIS để truyền qua env giúp hệ thống đọc biến liên thông Queue
+            docker run -d \
+              --name warehouse-express \
+              --network wh-network \
+              --restart unless-stopped \
+              -p 3000:3000 \
+              --env-file .env \
+              -e TZ=Asia/Ho_Chi_Minh \
+              -e HOSTNAME=0.0.0.0 \
+              -e NEXT_PUBLIC_APP_URL=http://localhost:3000 \
+              -e REDIS_HOST=warehouse-redis \
+              -e REDIS_PORT=6379 \
+              -v $(pwd)/uploads:/app/public/uploads \
+              $IMAGE
+            
+            # 6. Start/Update Monitoring Stack
+            # Kiểm tra xem docker compose có sẵn không, nếu không thì thử docker-compose
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker compose"
+            else
+              COMPOSE_CMD="docker-compose"
+            fi
+            
+            echo "Starting Monitoring Stack..."
+            $COMPOSE_CMD -f docker-compose.monitoring.yml up -d --remove-orphans
+
+            # 7. Dọn dẹp
+            docker image prune -a -f

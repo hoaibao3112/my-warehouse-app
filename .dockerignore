@@ -1,0 +1,16 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log
+README.md
+.next
+.git
+.github
+.env*
+.DS_Store
+coverage
+build
+out
+.vscode
+.agents
+CODEBASE-DOCS

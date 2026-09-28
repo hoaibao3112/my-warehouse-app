@@ -1,0 +1,74 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules/
+**/node_modules/
+
+# next.js
+/.next/
+/out/
+/.claude/
+
+# production
+/build
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# application logs
+logs/
+
+# env files
+.env
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+/lib/generated/prisma
+
+nul
+key
+
+# React Native / Expo
+src-react-native/.expo/
+src-react-native/.expo-shared/
+src-react-native/dist/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+*.log
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.swp
+*.swo
+*~
+
+# Uploaded files
+uploads/
+
+!uploads/.gitkeep
+
+.agent/
+.agents/
+CODEBASE-DOCS/
+
+
+public/openapi.json
+test/
+
+# Jest coverage output
+/coverage
+

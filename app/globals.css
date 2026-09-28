@@ -1,0 +1,270 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+/* @import "konsta/react/theme.css"; */
+
+@custom-variant dark (&:is(.dark *));
+
+/* Orange & Amber color palette for gradient support */
+@theme inline {
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-200: #e5e7eb;
+}
+
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.12 0.05 45);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0.05 45);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.12 0.05 45);
+  --primary: oklch(0.4 0.12 45);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.65 0.18 35);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.92 0.01 0);
+  --muted-foreground: oklch(0.5 0.05 45);
+  --accent: oklch(0.58 0.22 35);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.92 0.01 0);
+  --input: oklch(0.96 0.01 0);
+  --ring: oklch(0.58 0.22 35);
+  --chart-1: oklch(0.58 0.22 35);
+  --chart-2: oklch(0.4 0.12 45);
+  --chart-3: oklch(0.65 0.18 35);
+  --chart-4: oklch(0.55 0.15 25);
+  --chart-5: oklch(0.75 0.12 45);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.95 0.03 50);
+  --sidebar-foreground: oklch(0.12 0.05 45);
+  --sidebar-primary: oklch(0.58 0.22 35);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.88 0.02 80);
+  --sidebar-accent-foreground: oklch(0.12 0.05 45);
+  --sidebar-border: oklch(0.85 0.02 50);
+  --sidebar-ring: oklch(0.58 0.22 35);
+}
+
+.dark {
+  --background: oklch(0.15 0.04 45);
+  --foreground: oklch(0.95 0.02 80);
+  --card: oklch(0.18 0.04 45);
+  --card-foreground: oklch(0.95 0.02 80);
+  --popover: oklch(0.15 0.04 45);
+  --popover-foreground: oklch(0.95 0.02 80);
+  --primary: oklch(0.75 0.15 35);
+  --primary-foreground: oklch(0.15 0.04 45);
+  --secondary: oklch(0.45 0.08 45);
+  --secondary-foreground: oklch(0.95 0.02 80);
+  --muted: oklch(0.28 0.04 45);
+  --muted-foreground: oklch(0.65 0.08 80);
+  --accent: oklch(0.75 0.18 35);
+  --accent-foreground: oklch(0.15 0.04 45);
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(0.85 0.18 25);
+  --border: oklch(0.28 0.04 45);
+  --input: oklch(0.28 0.04 45);
+  --ring: oklch(0.75 0.18 35);
+  --chart-1: oklch(0.75 0.18 35);
+  --chart-2: oklch(0.65 0.12 45);
+  --chart-3: oklch(0.75 0.12 45);
+  --chart-4: oklch(0.68 0.18 35);
+  --chart-5: oklch(0.72 0.15 25);
+  --sidebar: oklch(0.22 0.05 50);
+  --sidebar-foreground: oklch(0.95 0.02 80);
+  --sidebar-primary: oklch(0.75 0.18 35);
+  --sidebar-primary-foreground: oklch(0.15 0.04 45);
+  --sidebar-accent: oklch(0.32 0.04 45);
+  --sidebar-accent-foreground: oklch(0.95 0.02 80);
+  --sidebar-border: oklch(0.32 0.04 45);
+  --sidebar-ring: oklch(0.75 0.18 35);
+}
+
+@theme inline {
+  /* optional: --font-sans, --font-serif, --font-mono if they are applied in the layout.tsx */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply bg-background text-foreground;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    /* Use dynamic viewport height for true fullscreen on mobile */
+    height: 100dvh;
+    height: 100vh;
+    /* Fallback for older browsers */
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    /* Safe area insets are handled by individual components (header, content)
+       to avoid double-padding issues on different devices.
+       Each component applies safe areas where needed. */
+  }
+
+  /* Root container for safe area management */
+  #__next,
+  [data-nextjs-scroll-focus-boundary] {
+    height: 100%;
+    width: 100%;
+  }
+}
+
+/* Capacitor Safe Area Utilities */
+@layer utilities {
+
+  /* Apply safe area padding to bottom only - for page content */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Apply safe area padding to bottom (for content areas with bottom actions) */
+  .safe-area-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1.5rem);
+  }
+
+  /* Apply safe area padding to top (for full-screen modals) */
+  .safe-area-top {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  }
+
+  /* Apply safe area to all sides */
+  .safe-area-all {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Apply safe area to top/bottom only (for sidebars) */
+  .safe-area-y {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Apply safe area to left/right only (for containers) */
+  .safe-area-x {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+}
+
+/* Print Styles - Clean invoice printing */
+@media print {
+
+  /* Remove browser default headers/footers (URL, date, page numbers) */
+  @page {
+    margin: 0.5cm;
+    size: A4;
+  }
+
+  /* Hide all buttons, navigation, and interactive elements */
+  button,
+  .print\:hidden,
+  nav,
+  header:not(.print-only) {
+    display: none !important;
+  }
+
+  /* Ensure white background and black text for printing */
+  body,
+  html {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Remove shadows and borders that waste ink */
+  *,
+  *::before,
+  *::after {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Ensure content fits on page */
+  .print\:shadow-none {
+    box-shadow: none !important;
+  }
+
+  .print\:border-none {
+    border: none !important;
+  }
+
+  /* Page break controls */
+  table,
+  img,
+  svg {
+    page-break-inside: avoid;
+  }
+
+  h1,
+  h2,
+  h3 {
+    page-break-after: avoid;
+  }
+}

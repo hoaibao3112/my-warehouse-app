@@ -1,0 +1,124 @@
+import { NextRequest, NextResponse } from 'next/server'
+import type { ApiResponse } from '@/lib/types'
+import { prisma } from '@/lib/prisma'
+
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const {
+      items,
+      subtotal,
+      promotionDiscount,
+      voucherDiscount,
+      totalDiscount,
+      total,
+      cashReceived,
+      change,
+      voucherId,
+    } = body || {}
+
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'Giỏ hàng trống' } as ApiResponse<null>,
+        { status: 400 }
+      )
+    }
+
+    // Generate invoice number
+    const date = new Date()
+    const invoiceNumber = `HD${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}${String(date.getHours()).padStart(2, '0')}${String(date.getMinutes()).padStart(2, '0')}${String(date.getSeconds()).padStart(2, '0')}`
+
+    // Create sales invoice
+    const invoice = await prisma.sales_invoices.create({
+      data: {
+        invoice_number: invoiceNumber,
+        warehouse_id: process.env.DEFAULT_WAREHOUSE_ID || '00000000-0000-0000-0000-000000000000',
+        total_amount: total,
+        notes: voucherId ? `Voucher: ${voucherId}` : undefined,
+        created_by: process.env.SYSTEM_USER_ID || '00000000-0000-0000-0000-000000000000',
+      },
+    })
+
+    // Create invoice items and update stock
+    for (const item of items) {
+      // Create invoice item
+      await prisma.sales_invoice_items.create({
+        data: {
+          invoice_id: invoice.id,
+          recipe_id: item.productId, // Using recipe_id field for now (adjust as needed)
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+          line_total: item.lineTotal,
+        },
+      })
+
+      // Create SALES transaction
+      await prisma.stock_transactions.create({
+        data: {
+          warehouse_id: process.env.DEFAULT_WAREHOUSE_ID || '00000000-0000-0000-0000-000000000000',
+          product_id: item.productId,
+          transaction_type: 'SALES',
+          quantity: -item.quantity, // Negative because it's going out
+          reference_id: invoice.id,
+          reference_type: 'SALES_INVOICE',
+          notes: `Bán hàng - Hóa đơn ${invoiceNumber}`,
+          created_by: process.env.SYSTEM_USER_ID || '00000000-0000-0000-0000-000000000000',
+        },
+      })
+
+      // Update warehouse stock
+      await prisma.warehouse_stock.upsert({
+        where: {
+          warehouse_id_product_id: {
+            warehouse_id: process.env.DEFAULT_WAREHOUSE_ID || '00000000-0000-0000-0000-000000000000',
+            product_id: item.productId,
+          },
+        },
+        update: {
+          quantity: {
+            decrement: item.quantity,
+          },
+          updated_at: new Date(),
+        },
+        create: {
+          warehouse_id: process.env.DEFAULT_WAREHOUSE_ID || '00000000-0000-0000-0000-000000000000',
+          product_id: item.productId,
+          quantity: -item.quantity,
+        },
+      })
+    }
+
+    // Update voucher usage if applied
+    if (voucherId) {
+      await prisma.vouchers.update({
+        where: { id: voucherId },
+        data: {
+          current_uses: {
+            increment: 1,
+          },
+        },
+      })
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          invoice_id: invoice.id,
+          invoice_number: invoiceNumber,
+          total,
+          cashReceived,
+          change,
+          message: 'Đơn hàng đã được lưu thành công',
+        },
+      } as ApiResponse<any>,
+      { status: 201 }
+    )
+  } catch (error: any) {
+    console.error('Error creating order:', error)
+    return NextResponse.json(
+      { success: false, error: error?.message || 'Lỗi lưu đơn hàng' } as ApiResponse<null>,
+      { status: 500 }
+    )
+  }
+}

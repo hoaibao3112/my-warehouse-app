@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "731785774588",
+    "project_id": "warehouse-express-d6a14",
+    "storage_bucket": "warehouse-express-d6a14.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:731785774588:android:9076871cb4945e364b9e79",
+        "android_client_info": {
+          "package_name": "com.warehouse.express"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFw2NZgExcKRgt3RwnLi1q-lYfblAqFoc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

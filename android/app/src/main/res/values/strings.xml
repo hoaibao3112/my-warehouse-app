@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Express Cafe</string>
+    <string name="title_activity_main">Express Cafe</string>
+    <string name="package_name">com.warehouse.express</string>
+    <string name="custom_url_scheme">com.warehouse.express</string>
+</resources>

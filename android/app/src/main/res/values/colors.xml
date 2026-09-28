@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Primary brand color -->
+    <color name="colorPrimary">#3B82F6</color>
+    <!-- Primary dark variant -->
+    <color name="colorPrimaryDark">#2563EB</color>
+    <!-- Accent color used for FCM notification icon tint -->
+    <color name="colorAccent">#F97316</color>
+</resources>
